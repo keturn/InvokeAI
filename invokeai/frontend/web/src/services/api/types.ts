@@ -1,13 +1,40 @@
 import { UseToastOptions } from '@chakra-ui/react';
+import { EntityState } from '@reduxjs/toolkit';
 import { O } from 'ts-toolbelt';
-import { components } from './schema';
+import { components, paths } from './schema';
 
-type schemas = components['schemas'];
+export type ImageCache = EntityState<ImageDTO>;
+
+export type ListImagesArgs = NonNullable<
+  paths['/api/v1/images/']['get']['parameters']['query']
+>;
+
+export type DeleteBoardResult =
+  paths['/api/v1/boards/{board_id}']['delete']['responses']['200']['content']['application/json'];
+
+export type ListBoardsArg = NonNullable<
+  paths['/api/v1/boards/']['get']['parameters']['query']
+>;
+
+export type UpdateBoardArg =
+  paths['/api/v1/boards/{board_id}']['patch']['parameters']['path'] & {
+    changes: paths['/api/v1/boards/{board_id}']['patch']['requestBody']['content']['application/json'];
+  };
+
+/**
+ * This is an unsafe type; the object inside is not guaranteed to be valid.
+ */
+export type UnsafeImageMetadata = {
+  metadata: components['schemas']['CoreMetadata'];
+  graph: NonNullable<components['schemas']['Graph']>;
+};
 
 /**
  * Marks the `type` property as required. Use for nodes.
  */
-type TypeReq<T> = O.Required<T, 'type'>;
+type TypeReq<T extends object> = O.Required<T, 'type'>;
+
+// Extracted types from API schema
 
 // App Info
 export type AppVersion = components['schemas']['AppVersion'];
@@ -59,9 +86,9 @@ export type DiffusersModelConfig =
 export type CheckpointModelConfig =
   | components['schemas']['StableDiffusion1ModelCheckpointConfig']
   | components['schemas']['StableDiffusion2ModelCheckpointConfig']
-  | components['schemas']['StableDiffusion2ModelDiffusersConfig'];
-export type OnnxModelConfig = components['schemas']['ONNXStableDiffusion1ModelConfig']
   | components['schemas']['StableDiffusionXLModelCheckpointConfig'];
+export type OnnxModelConfig =
+  components['schemas']['ONNXStableDiffusion1ModelConfig'];
 export type MainModelConfig = DiffusersModelConfig | CheckpointModelConfig;
 export type AnyModelConfig =
   | LoRAModelConfig
@@ -72,7 +99,6 @@ export type AnyModelConfig =
   | OnnxModelConfig;
 
 export type MergeModelConfig = components['schemas']['Body_merge_models'];
-export type ConvertModelConfig = components['schemas']['Body_convert_model'];
 export type ImportModelConfig = components['schemas']['Body_import_model'];
 
 // Graphs
@@ -115,6 +141,9 @@ export type DynamicPromptInvocation = TypeReq<
 export type NoiseInvocation = TypeReq<components['schemas']['NoiseInvocation']>;
 export type TextToLatentsInvocation = TypeReq<
   components['schemas']['TextToLatentsInvocation']
+>;
+export type ONNXTextToLatentsInvocation = TypeReq<
+  components['schemas']['ONNXTextToLatentsInvocation']
 >;
 export type LatentsToLatentsInvocation = TypeReq<
   components['schemas']['LatentsToLatentsInvocation']
