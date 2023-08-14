@@ -5,7 +5,8 @@ import inspect
 import math
 import secrets
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, List, Optional, Type, TypeVar, Union
+from pathlib import Path
+from typing import Any, Callable, Generic, List, Optional, Type, TypeVar, Union, Protocol, runtime_checkable
 
 import PIL.Image
 import einops
@@ -13,6 +14,8 @@ import psutil
 import torch
 import torchvision.transforms as T
 from accelerate.utils import set_seed
+from diffusers import AutoencoderTiny
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.controlnet import ControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
@@ -29,7 +32,9 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.schedulers.scheduling_utils import SchedulerMixin, SchedulerOutput
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.outputs import BaseOutput
+from kornia.color import rgb_to_luv, luv_to_rgb
 from pydantic import Field
+from torch.nn.functional import mse_loss
 from torchvision.transforms.functional import resize as tv_resize
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from typing_extensions import ParamSpec
@@ -137,6 +142,106 @@ class AddsMaskGuidance:
         if self._debug:
             self._debug(masked_input, f"t={t} lerped")
         return masked_input
+
+
+@runtime_checkable
+class PredictsOriginalOutput(Protocol):
+    prev_sample: torch.FloatTensor
+    pred_original_sample: torch.FloatTensor
+
+    def copy(self) -> PredictsOriginalOutput:
+        ...
+
+    def update(self, **kwargs) -> PredictsOriginalOutput:
+        ...
+
+
+@dataclass
+class ColorizingGuidance:
+    original_value_channel: torch.FloatTensor
+    scheduler: SchedulerMixin
+    noise: torch.Tensor
+
+    def __post_init__(self):
+        with torch.inference_mode(False):
+            self.vae: AutoencoderTiny = AutoencoderTiny.from_pretrained(
+                "madebyollin/taesd", torch_dtype=torch.float16
+            ).to("cuda:0")
+
+    def __call__(self, step_output: PredictsOriginalOutput, t: torch.Tensor, conditioning) -> PredictsOriginalOutput:
+        cond_grad = self.find_conditioning_gradient(step_output.pred_original_sample, value_weight=1)
+
+        # TODO: scale based on sigma?
+        prev_sample = step_output.prev_sample - cond_grad.clamp(-1, 1)
+        print(
+            f"cond_grad {cond_grad.min():0.4f} {cond_grad.mean():0.4f} ({cond_grad.std():0.4f}) {cond_grad.max():0.4f}"
+        )
+
+        # pred_original_sample =  # TODO
+
+        return step_output.__class__(prev_sample=prev_sample, pred_original_sample=step_output.pred_original_sample)
+
+    def find_conditioning_gradient(self, pred_original_sample: torch.FloatTensor, chroma_weight=1.0, value_weight=1.0):
+        with torch.inference_mode(False):
+            pred_for_grad = pred_original_sample.clone().detach().requires_grad_()
+            hsv_prediction = self.latents_to_luv(pred_for_grad)
+            value_loss = self.value_loss(hsv_prediction)
+            chroma_loss = self.chroma_loss(hsv_prediction)
+            print(f"Loss from chroma: {chroma_loss} value: {value_loss:0.4f}")
+            cond_grad = torch.autograd.grad(chroma_loss * chroma_weight + value_loss * value_weight, pred_for_grad)[0]
+        return cond_grad
+
+    def value_loss(self, luv_prediction: torch.FloatTensor):
+        value_channel = luv_prediction[:, 0, :, :]
+        value_loss = mse_loss(value_channel, self.original_value_channel)
+        if value_loss.isnan():
+            return value_loss.zero_()
+        return value_loss
+
+    def chroma_loss(self, luv_prediction: torch.FloatTensor):
+        u_star = luv_prediction[:, 1, :, :]
+        v_star = luv_prediction[:, 2, :, :]
+        print(f"u* {u_star.std():0.4f} v* {v_star.std():0.4f}")
+        saturation_loss = -(u_star.std() + v_star.std()) + 26
+        if saturation_loss.isnan():
+            saturation_loss.fill_(26.0)
+        else:
+            saturation_loss.clamp_(0, 26)
+        return saturation_loss
+
+    def latents_to_luv(self, pred_original_sample: torch.FloatTensor) -> torch.FloatTensor:
+        rgb_prediction = self.vae.decode(pred_original_sample).sample
+        rgb_prediction = VaeImageProcessor(do_normalize=True).postprocess(rgb_prediction, output_type="pt")
+        hsv_prediction = rgb_to_luv(rgb_prediction)
+        return hsv_prediction
+
+    def luv_to_latents(self, luv: torch.FloatTensor):
+        rgb_prediction = luv_to_rgb(luv)
+        rgb_prediction = VaeImageProcessor(do_normalize=True).preprocess(rgb_prediction)
+        latents = self.vae.encode(rgb_prediction).latents
+        return latents
+
+    def compose_with_original_value_channel(self, latents: torch.FloatTensor) -> torch.FloatTensor:
+        luv = self.latents_to_luv(latents)
+        luv[:, 0, :, :] = self.original_value_channel
+        return self.luv_to_latents(luv)
+
+    @classmethod
+    def from_image(
+        cls,
+        grayscale_image: PIL.Image.Image,
+        device: torch.device,
+        dtype: torch.dtype,
+        scheduler: SchedulerMixin,
+        noise: torch.Tensor,
+    ) -> ColorizingGuidance:
+        grayscale: torch.FloatTensor = VaeImageProcessor(do_convert_rgb=True, do_normalize=False).preprocess(
+            grayscale_image
+        )
+        values = rgb_to_luv(grayscale)[:, 0, :, :].to(device=device, dtype=dtype)
+        with torch.inference_mode(False):
+            values = values.clone()
+        return ColorizingGuidance(original_value_channel=values, scheduler=scheduler, noise=noise)
 
 
 def trim_to_multiple_of(*args, multiple_of=8):
@@ -407,7 +512,14 @@ class StableDiffusionGeneratorPipeline(StableDiffusionPipeline):
         if run_id is None:
             run_id = secrets.token_urlsafe(self.ID_LENGTH)
         if additional_guidance is None:
-            additional_guidance = []
+            colorize = ColorizingGuidance.from_image(
+                PIL.Image.open(Path("bw.jpg")),
+                device=self.unet.device,
+                dtype=torch.float16,
+                scheduler=self.scheduler,
+                noise=noise,
+            )
+            additional_guidance = [colorize]
         extra_conditioning_info = conditioning_data.extra
         with self.invokeai_diffuser.custom_attention_context(
             self.invokeai_diffuser.model,
