@@ -17,11 +17,13 @@ import { stateSelector } from 'app/store/store';
 import { defaultSelectorOptions } from 'app/store/util/defaultMemoizeOptions';
 import IAIIconButton from 'common/components/IAIIconButton';
 import IAISwitch from 'common/components/IAISwitch';
+import { activeTabNameSelector } from 'features/ui/store/uiSelectors';
 import { useToggle } from 'react-use';
 import { v4 as uuidv4 } from 'uuid';
 import ControlNetImagePreview from './ControlNetImagePreview';
 import ControlNetProcessorComponent from './ControlNetProcessorComponent';
 import ParamControlNetShouldAutoConfig from './ParamControlNetShouldAutoConfig';
+import ControlNetCanvasImageImports from './imports/ControlNetCanvasImageImports';
 import ParamControlNetBeginEnd from './parameters/ParamControlNetBeginEnd';
 import ParamControlNetControlMode from './parameters/ParamControlNetControlMode';
 import ParamControlNetProcessorSelect from './parameters/ParamControlNetProcessorSelect';
@@ -35,6 +37,8 @@ const ControlNet = (props: ControlNetProps) => {
   const { controlNet } = props;
   const { controlNetId } = controlNet;
   const dispatch = useAppDispatch();
+
+  const activeTabName = useAppSelector(activeTabNameSelector);
 
   const selector = createSelector(
     stateSelector,
@@ -80,19 +84,19 @@ const ControlNet = (props: ControlNetProps) => {
       sx={{
         flexDir: 'column',
         gap: 3,
-        p: 3,
+        p: 2,
         borderRadius: 'base',
         position: 'relative',
-        bg: 'base.200',
+        bg: 'base.250',
         _dark: {
-          bg: 'base.850',
+          bg: 'base.750',
         },
       }}
     >
       <Flex sx={{ gap: 2, alignItems: 'center' }}>
         <IAISwitch
-          tooltip={'Toggle this ControlNet'}
-          aria-label={'Toggle this ControlNet'}
+          tooltip="Toggle this ControlNet"
+          aria-label="Toggle this ControlNet"
           isChecked={isEnabled}
           onChange={handleToggleIsEnabled}
         />
@@ -108,6 +112,9 @@ const ControlNet = (props: ControlNetProps) => {
         >
           <ParamControlNetModel controlNet={controlNet} />
         </Box>
+        {activeTabName === 'unifiedCanvas' && (
+          <ControlNetCanvasImageImports controlNet={controlNet} />
+        )}
         <IAIIconButton
           size="sm"
           tooltip="Duplicate"
@@ -167,6 +174,7 @@ const ControlNet = (props: ControlNetProps) => {
           />
         )}
       </Flex>
+
       <Flex sx={{ w: 'full', flexDirection: 'column', gap: 3 }}>
         <Flex sx={{ gap: 4, w: 'full', alignItems: 'center' }}>
           <Flex
@@ -194,7 +202,7 @@ const ControlNet = (props: ControlNetProps) => {
                 aspectRatio: '1/1',
               }}
             >
-              <ControlNetImagePreview controlNet={controlNet} height={28} />
+              <ControlNetImagePreview controlNet={controlNet} isSmall />
             </Flex>
           )}
         </Flex>
@@ -207,7 +215,7 @@ const ControlNet = (props: ControlNetProps) => {
 
       {isExpanded && (
         <>
-          <ControlNetImagePreview controlNet={controlNet} height="392px" />
+          <ControlNetImagePreview controlNet={controlNet} />
           <ParamControlNetShouldAutoConfig controlNet={controlNet} />
           <ControlNetProcessorComponent controlNet={controlNet} />
         </>

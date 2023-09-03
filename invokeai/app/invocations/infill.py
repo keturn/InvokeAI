@@ -1,28 +1,25 @@
 # Copyright (c) 2022 Kyle Schouviller (https://github.com/kyle0654) and the InvokeAI Team
 
+import math
 from typing import Literal, Optional, get_args
 
 import numpy as np
-import math
 from PIL import Image, ImageOps
-from pydantic import Field
 
-from invokeai.app.invocations.image import ImageOutput
+from invokeai.app.invocations.primitives import ColorField, ImageField, ImageOutput
 from invokeai.app.util.misc import SEED_MAX, get_random_seed
+from invokeai.backend.image_util.lama import LaMA
 from invokeai.backend.image_util.patchmatch import PatchMatch
 
-from ..models.image import ColorField, ImageCategory, ImageField, ResourceOrigin
-from .baseinvocation import (
-    BaseInvocation,
-    InvocationConfig,
-    InvocationContext,
-)
+from ..models.image import ImageCategory, ResourceOrigin
+from .baseinvocation import BaseInvocation, InputField, InvocationContext, invocation
 
 
 def infill_methods() -> list[str]:
     methods = [
         "tile",
         "solid",
+        "lama",
     ]
     if PatchMatch.patchmatch_available():
         methods.insert(0, "patchmatch")
@@ -31,6 +28,11 @@ def infill_methods() -> list[str]:
 
 INFILL_METHODS = Literal[tuple(infill_methods())]
 DEFAULT_INFILL_METHOD = "patchmatch" if "patchmatch" in get_args(INFILL_METHODS) else "tile"
+
+
+def infill_lama(im: Image.Image) -> Image.Image:
+    lama = LaMA()
+    return lama(im)
 
 
 def infill_patchmatch(im: Image.Image) -> Image.Image:
@@ -95,7 +97,7 @@ def tile_fill_missing(im: Image.Image, tile_size: int = 16, seed: Optional[int] 
         return im
 
     # Find all invalid tiles and replace with a random valid tile
-    replace_count = (tiles_mask == False).sum()
+    replace_count = (tiles_mask == False).sum()  # noqa: E712
     rng = np.random.default_rng(seed=seed)
     tiles_all[np.logical_not(tiles_mask)] = filtered_tiles[rng.choice(filtered_tiles.shape[0], replace_count), :, :, :]
 
@@ -114,20 +116,15 @@ def tile_fill_missing(im: Image.Image, tile_size: int = 16, seed: Optional[int] 
     return si
 
 
+@invocation("infill_rgba", title="Solid Color Infill", tags=["image", "inpaint"], category="inpaint")
 class InfillColorInvocation(BaseInvocation):
     """Infills transparent areas of an image with a solid color"""
 
-    type: Literal["infill_rgba"] = "infill_rgba"
-    image: Optional[ImageField] = Field(default=None, description="The image to infill")
-    color: ColorField = Field(
+    image: ImageField = InputField(description="The image to infill")
+    color: ColorField = InputField(
         default=ColorField(r=127, g=127, b=127, a=255),
         description="The color to use to infill",
     )
-
-    class Config(InvocationConfig):
-        schema_extra = {
-            "ui": {"title": "Color Infill", "tags": ["image", "inpaint", "color", "infill"]},
-        }
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         image = context.services.images.get_pil_image(self.image.image_name)
@@ -144,6 +141,7 @@ class InfillColorInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            workflow=self.workflow,
         )
 
         return ImageOutput(
@@ -153,24 +151,18 @@ class InfillColorInvocation(BaseInvocation):
         )
 
 
+@invocation("infill_tile", title="Tile Infill", tags=["image", "inpaint"], category="inpaint")
 class InfillTileInvocation(BaseInvocation):
     """Infills transparent areas of an image with tiles of the image"""
 
-    type: Literal["infill_tile"] = "infill_tile"
-
-    image: Optional[ImageField] = Field(default=None, description="The image to infill")
-    tile_size: int = Field(default=32, ge=1, description="The tile size (px)")
-    seed: int = Field(
+    image: ImageField = InputField(description="The image to infill")
+    tile_size: int = InputField(default=32, ge=1, description="The tile size (px)")
+    seed: int = InputField(
         ge=0,
         le=SEED_MAX,
         description="The seed to use for tile generation (omit for random)",
         default_factory=get_random_seed,
     )
-
-    class Config(InvocationConfig):
-        schema_extra = {
-            "ui": {"title": "Tile Infill", "tags": ["image", "inpaint", "tile", "infill"]},
-        }
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         image = context.services.images.get_pil_image(self.image.image_name)
@@ -185,6 +177,7 @@ class InfillTileInvocation(BaseInvocation):
             node_id=self.id,
             session_id=context.graph_execution_state_id,
             is_intermediate=self.is_intermediate,
+            workflow=self.workflow,
         )
 
         return ImageOutput(
@@ -194,17 +187,11 @@ class InfillTileInvocation(BaseInvocation):
         )
 
 
+@invocation("infill_patchmatch", title="PatchMatch Infill", tags=["image", "inpaint"], category="inpaint")
 class InfillPatchMatchInvocation(BaseInvocation):
     """Infills transparent areas of an image using the PatchMatch algorithm"""
 
-    type: Literal["infill_patchmatch"] = "infill_patchmatch"
-
-    image: Optional[ImageField] = Field(default=None, description="The image to infill")
-
-    class Config(InvocationConfig):
-        schema_extra = {
-            "ui": {"title": "Patch Match Infill", "tags": ["image", "inpaint", "patchmatch", "infill"]},
-        }
+    image: ImageField = InputField(description="The image to infill")
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         image = context.services.images.get_pil_image(self.image.image_name)
@@ -213,6 +200,34 @@ class InfillPatchMatchInvocation(BaseInvocation):
             infilled = infill_patchmatch(image.copy())
         else:
             raise ValueError("PatchMatch is not available on this system")
+
+        image_dto = context.services.images.create(
+            image=infilled,
+            image_origin=ResourceOrigin.INTERNAL,
+            image_category=ImageCategory.GENERAL,
+            node_id=self.id,
+            session_id=context.graph_execution_state_id,
+            is_intermediate=self.is_intermediate,
+            workflow=self.workflow,
+        )
+
+        return ImageOutput(
+            image=ImageField(image_name=image_dto.image_name),
+            width=image_dto.width,
+            height=image_dto.height,
+        )
+
+
+@invocation("infill_lama", title="LaMa Infill", tags=["image", "inpaint"], category="inpaint")
+class LaMaInfillInvocation(BaseInvocation):
+    """Infills transparent areas of an image using the LaMa model"""
+
+    image: ImageField = InputField(description="The image to infill")
+
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.services.images.get_pil_image(self.image.image_name)
+
+        infilled = infill_lama(image.copy())
 
         image_dto = context.services.images.create(
             image=infilled,

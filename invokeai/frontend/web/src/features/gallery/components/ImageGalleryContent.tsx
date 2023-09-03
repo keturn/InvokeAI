@@ -18,7 +18,6 @@ import { FaImages, FaServer } from 'react-icons/fa';
 import { galleryViewChanged } from '../store/gallerySlice';
 import BoardsList from './Boards/BoardsList/BoardsList';
 import GalleryBoardName from './GalleryBoardName';
-import GalleryPinButton from './GalleryPinButton';
 import GallerySettingsPopover from './GallerySettingsPopover';
 import GalleryImageGrid from './ImageGrid/GalleryImageGrid';
 
@@ -40,7 +39,7 @@ const ImageGalleryContent = () => {
   const { galleryView } = useAppSelector(selector);
   const dispatch = useAppDispatch();
   const { isOpen: isBoardListOpen, onToggle: onToggleBoardList } =
-    useDisclosure();
+    useDisclosure({ defaultIsOpen: true });
 
   const handleClickImages = useCallback(() => {
     dispatch(galleryViewChanged('images'));
@@ -52,11 +51,13 @@ const ImageGalleryContent = () => {
 
   return (
     <VStack
+      layerStyle="first"
       sx={{
         flexDirection: 'column',
         h: 'full',
         w: 'full',
         borderRadius: 'base',
+        p: 2,
       }}
     >
       <Box sx={{ w: 'full' }}>
@@ -73,7 +74,6 @@ const ImageGalleryContent = () => {
             onToggle={onToggleBoardList}
           />
           <GallerySettingsPopover />
-          <GalleryPinButton />
         </Flex>
         <Box>
           <BoardsList isOpen={isBoardListOpen} />

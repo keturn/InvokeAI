@@ -14,7 +14,7 @@ import { $authToken, $baseUrl, $projectId } from 'services/api/client';
 import { socketMiddleware } from 'services/events/middleware';
 import Loading from '../../common/components/Loading/Loading';
 import '../../i18n';
-import ImageDndContext from './ImageDnd/ImageDndContext';
+import AppDndContext from '../../features/dnd/components/AppDndContext';
 
 const App = lazy(() => import('./App'));
 const ThemeLocaleProvider = lazy(() => import('./ThemeLocaleProvider'));
@@ -26,6 +26,10 @@ interface Props extends PropsWithChildren {
   headerComponent?: ReactNode;
   middleware?: Middleware[];
   projectId?: string;
+  selectedImage?: {
+    imageName: string;
+    action: 'sendToImg2Img' | 'sendToCanvas' | 'useAllParameters';
+  };
 }
 
 const InvokeAIUI = ({
@@ -35,6 +39,7 @@ const InvokeAIUI = ({
   headerComponent,
   middleware,
   projectId,
+  selectedImage,
 }: Props) => {
   useEffect(() => {
     // configure API client token
@@ -80,9 +85,13 @@ const InvokeAIUI = ({
       <Provider store={store}>
         <React.Suspense fallback={<Loading />}>
           <ThemeLocaleProvider>
-            <ImageDndContext>
-              <App config={config} headerComponent={headerComponent} />
-            </ImageDndContext>
+            <AppDndContext>
+              <App
+                config={config}
+                headerComponent={headerComponent}
+                selectedImage={selectedImage}
+              />
+            </AppDndContext>
           </ThemeLocaleProvider>
         </React.Suspense>
       </Provider>

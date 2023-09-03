@@ -341,7 +341,8 @@ class ModelManager(object):
         self.logger = logger
         self.cache = ModelCache(
             max_cache_size=max_cache_size,
-            max_vram_cache_size=self.app_config.max_vram_cache_size,
+            max_vram_cache_size=self.app_config.vram_cache_size,
+            lazy_offloading=self.app_config.lazy_offload,
             execution_device=device_type,
             precision=precision,
             sequential_offload=sequential_offload,
@@ -419,12 +420,12 @@ class ModelManager(object):
         base_model_str, model_type_str, model_name = model_key.split("/", 2)
         try:
             model_type = ModelType(model_type_str)
-        except:
+        except Exception:
             raise Exception(f"Unknown model type: {model_type_str}")
 
         try:
             base_model = BaseModelType(base_model_str)
-        except:
+        except Exception:
             raise Exception(f"Unknown base model: {base_model_str}")
 
         return (model_name, base_model, model_type)
@@ -526,7 +527,7 @@ class ModelManager(object):
         # Does the config explicitly override the submodel?
         if submodel_type is not None and hasattr(model_config, submodel_type):
             submodel_path = getattr(model_config, submodel_type)
-            if submodel_path is not None:
+            if submodel_path is not None and len(submodel_path) > 0:
                 model_path = getattr(model_config, submodel_type)
                 is_submodel_override = True
 
@@ -595,9 +596,10 @@ class ModelManager(object):
         the combined format of the list_models() method.
         """
         models = self.list_models(base_model, model_type, model_name)
-        if len(models) > 1:
+        if len(models) >= 1:
             return models[0]
-        return None
+        else:
+            return None
 
     def list_models(
         self,
@@ -854,7 +856,7 @@ class ModelManager(object):
             info.pop("config")
 
             result = self.add_model(model_name, base_model, model_type, model_attributes=info, clobber=True)
-        except:
+        except Exception:
             # something went wrong, so don't leave dangling diffusers model in directory or it will cause a duplicate model error!
             rmtree(new_diffusers_path)
             raise
@@ -990,7 +992,9 @@ class ModelManager(object):
                                     raise DuplicateModelException(f"Model with key {model_key} added twice")
 
                                 model_path = self.relative_model_path(model_path)
-                                model_config: ModelConfigBase = model_class.probe_config(str(model_path))
+                                model_config: ModelConfigBase = model_class.probe_config(
+                                    str(model_path), model_base=cur_base_model
+                                )
                                 self.models[model_key] = model_config
                                 new_models_found = True
                             except DuplicateModelException as e:
@@ -1039,7 +1043,7 @@ class ModelManager(object):
         # Patch in the SD VAE from core so that it is available for use by the UI
         try:
             self.heuristic_import({str(self.resolve_model_path("core/convert/sd-vae-ft-mse"))})
-        except:
+        except Exception:
             pass
 
         installer = ModelInstall(

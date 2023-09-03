@@ -15,6 +15,9 @@ import { addDeleteBoardAndImagesFulfilledListener } from './listeners/boardAndIm
 import { addBoardIdSelectedListener } from './listeners/boardIdSelected';
 import { addCanvasCopiedToClipboardListener } from './listeners/canvasCopiedToClipboard';
 import { addCanvasDownloadedAsImageListener } from './listeners/canvasDownloadedAsImage';
+import { addCanvasImageToControlNetListener } from './listeners/canvasImageToControlNet';
+import { addCanvasMaskSavedToGalleryListener } from './listeners/canvasMaskSavedToGallery';
+import { addCanvasMaskToControlNetListener } from './listeners/canvasMaskToControlNet';
 import { addCanvasMergedListener } from './listeners/canvasMerged';
 import { addCanvasSavedToGalleryListener } from './listeners/canvasSavedToGallery';
 import { addControlNetAutoProcessListener } from './listeners/controlNetAutoProcess';
@@ -27,8 +30,8 @@ import {
   addImageDeletedFulfilledListener,
   addImageDeletedPendingListener,
   addImageDeletedRejectedListener,
-  addRequestedSingleImageDeletionListener,
   addRequestedMultipleImageDeletionListener,
+  addRequestedSingleImageDeletionListener,
 } from './listeners/imageDeleted';
 import { addImageDroppedListener } from './listeners/imageDropped';
 import {
@@ -40,6 +43,8 @@ import {
   addImageUploadedFulfilledListener,
   addImageUploadedRejectedListener,
 } from './listeners/imageUploaded';
+import { addImagesStarredListener } from './listeners/imagesStarred';
+import { addImagesUnstarredListener } from './listeners/imagesUnstarred';
 import { addInitialImageSelectedListener } from './listeners/initialImageSelected';
 import { addModelSelectedListener } from './listeners/modelSelected';
 import { addModelsLoadedListener } from './listeners/modelsLoaded';
@@ -120,6 +125,10 @@ addImageDeletedRejectedListener();
 addDeleteBoardAndImagesFulfilledListener();
 addImageToDeleteSelectedListener();
 
+// Image starred
+addImagesStarredListener();
+addImagesUnstarredListener();
+
 // User Invoked
 addUserInvokedCanvasListener();
 addUserInvokedNodesListener();
@@ -129,6 +138,9 @@ addSessionReadyToInvokeListener();
 
 // Canvas actions
 addCanvasSavedToGalleryListener();
+addCanvasMaskSavedToGalleryListener();
+addCanvasImageToControlNetListener();
+addCanvasMaskToControlNetListener();
 addCanvasDownloadedAsImageListener();
 addCanvasCopiedToClipboardListener();
 addCanvasMergedListener();

@@ -22,6 +22,7 @@ from invokeai.backend.model_management import (
     ModelNotFoundException,
 )
 from invokeai.backend.model_management.model_search import FindModels
+from invokeai.backend.model_management.model_cache import CacheStats
 
 import torch
 from invokeai.app.models.exceptions import CanceledException
@@ -277,6 +278,13 @@ class ModelManagerServiceBase(ABC):
         pass
 
     @abstractmethod
+    def collect_cache_stats(self, cache_stats: CacheStats):
+        """
+        Reset model cache statistics for graph with graph_id.
+        """
+        pass
+
+    @abstractmethod
     def commit(self, conf_file: Optional[Path] = None) -> None:
         """
         Write current configuration out to the indicated file.
@@ -322,8 +330,8 @@ class ModelManagerService(ModelManagerServiceBase):
         # configuration value. If present, then the
         # cache size is set to 2.5 GB times
         # the number of max_loaded_models. Otherwise
-        # use new `max_cache_size` config setting
-        max_cache_size = config.max_cache_size if hasattr(config, "max_cache_size") else config.max_loaded_models * 2.5
+        # use new `ram_cache_size` config setting
+        max_cache_size = config.ram_cache_size
 
         logger.debug(f"Maximum RAM cache size: {max_cache_size} GiB")
 
@@ -499,6 +507,12 @@ class ModelManagerService(ModelManagerServiceBase):
         """
         self.logger.debug(f"convert model {model_name}")
         return self.mgr.convert_model(model_name, base_model, model_type, convert_dest_directory)
+
+    def collect_cache_stats(self, cache_stats: CacheStats):
+        """
+        Reset model cache statistics for graph with graph_id.
+        """
+        self.mgr.cache.stats = cache_stats
 
     def commit(self, conf_file: Optional[Path] = None):
         """
