@@ -2,13 +2,12 @@ import json
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
 
 from pydantic import Field
 
-from invokeai.app.invocations.baseinvocation import BaseInvocation, InvocationContext, InvocationConfig
+from invokeai.app.invocations.baseinvocation import BaseInvocation, InvocationContext, InputField, invocation
 from invokeai.app.invocations.metadata import ImageMetadata
-from invokeai.app.models.image import ImageField, ImageOutput
+from invokeai.app.invocations.primitives import ImageField, ImageOutput
 
 XMP_NS_URI = "https://invoke.ai/xmp/0.0.1/"
 XMP_NS_PREFIX = "invokeai"
@@ -86,13 +85,12 @@ class MetadataXMPSerializer:
         raise NotImplementedError()  # return bytes()
 
 
+@invocation("export_image", title="Export Image (WebP)", tags=["image"], category="image")
 class WebExportInvocation(BaseInvocation):
     """Export an image in WebP format."""
 
-    type: Literal["export_image"] = "export_image"
-
     # Inputs
-    image: Optional[ImageField] = Field(default=None, description="The image to export")
+    image: ImageField = InputField(default=None, description="The image to export")
     lossless: bool = Field(default=False, description="Use lossless compression.")
     quality: int = Field(
         default=80, description="Image quality [0..100]. 0=smallest file, 100=highest quality", ge=0, le=100
@@ -101,11 +99,6 @@ class WebExportInvocation(BaseInvocation):
     # internals
     _metadataExporter = MetadataXMPSerializer()
     _format = "WEBP"
-
-    class Config(InvocationConfig):
-        schema_extra = {
-            "ui": {"title": "Export Image (WebP)", "tags": ["image", "export"]},
-        }
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
         images = context.services.images
