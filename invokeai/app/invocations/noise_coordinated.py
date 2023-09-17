@@ -106,9 +106,9 @@ class CoordinatedNoiseInvocation(BaseInvocation):
     channel_offset: int = InputField(default=0, description="coordinate of the first channel")
 
     def invoke(self, context: InvocationContext) -> NoiseOutput:
-        origin = np.array([self.x_offset, self.y_offset, self.channel_offset]) // self._downsampling_factor
+        origin = np.array([self.channel_offset, self.y_offset, self.x_offset]) // self._downsampling_factor
         shape = np.array(
-            [self._latent_channels, self.width // self._downsampling_factor, self.height // self._downsampling_factor]
+            [self._latent_channels, self.height // self._downsampling_factor, self.width // self._downsampling_factor]
         )
         np_noise = morton_fill(origin, shape, self.seed)
 
