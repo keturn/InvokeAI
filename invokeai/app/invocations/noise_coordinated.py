@@ -70,7 +70,9 @@ def morton_fill(position: np.ndarray, shape: np.ndarray, seed: int = None) -> np
     return scipy.stats.norm.ppf(a / (1 << 32), 0).astype(np.float16)
 
 
-@invocation("noise_coordinated", title="Coordinated Noise", tags=["latents", "noise"], category="latents", version="1.0.0")
+@invocation(
+    "noise_coordinated", title="Coordinated Noise", tags=["latents", "noise"], category="latents", version="1.0.0"
+)
 class CoordinatedNoiseInvocation(BaseInvocation):
     """Generates latent noise that is stable for the given coordinates.
 
@@ -101,15 +103,18 @@ class CoordinatedNoiseInvocation(BaseInvocation):
         gt=0,
         description=FieldDescriptions.height,
     )
-    x_offset: int = InputField(default=0, description="x-coordinate of the lower edge")
-    y_offset: int = InputField(default=0, description="y-coordinate of the lower edge")
+    x_offset: int = InputField(
+        default=0, description="x-coordinate of the lower edge", multiple_of=_downsampling_factor
+    )
+    y_offset: int = InputField(
+        default=0, description="y-coordinate of the lower edge", multiple_of=_downsampling_factor
+    )
     channel_offset: int = InputField(default=0, description="coordinate of the first channel")
 
     def invoke(self, context: InvocationContext) -> NoiseOutput:
-        origin = np.array([self.channel_offset, self.y_offset, self.x_offset]) // self._downsampling_factor
-        shape = np.array(
-            [self._latent_channels, self.height // self._downsampling_factor, self.width // self._downsampling_factor]
-        )
+        factor = self._downsampling_factor
+        origin = np.array([self.channel_offset, self.y_offset // factor, self.x_offset // factor])
+        shape = np.array([self._latent_channels, self.height // factor, self.width // factor])
         np_noise = morton_fill(origin, shape, self.seed)
 
         noise_tensor = torch.tensor(np_noise, dtype=torch_dtype(choose_torch_device()))
