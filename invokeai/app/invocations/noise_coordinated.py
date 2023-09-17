@@ -1,13 +1,15 @@
 # Copyright 2023 Kevin Turner
 # SPDX-License-Identifier: Apache-2.0
-"""Cartesian Noise Generator.
+"""Coordinated Noise Generator.
+
+The name and specific algorithm are original — that is, I just made them up. Please do let me know
+if there's accepted terminology or existing best practices for this.
 
 required dependencies: cityhash~=0.4 pymorton~=1.0
 """
 
 import secrets
 import struct
-from typing import Union
 
 import farmhash
 import numpy as np
@@ -31,7 +33,13 @@ SEED_MAX = 0xFFFFFFFF  # FarmHash32 seed is uint32
 int_packing = struct.Struct("<i")
 
 
-def morton_fill(position: np.ndarray, shape: Union[tuple, np.ndarray], seed: int = None) -> np.ndarray:
+def morton_fill(position: np.ndarray, shape: np.ndarray, seed: int = None) -> np.ndarray:
+    """
+    :param position: the starting position of the region; coordinates will count up from here
+    :param shape: shape of the array to fill with noise. (Assumed to be 3D.)
+    :param seed: seeds the pseudorandom noise.
+    :return: float16 array of the given shape
+    """
     if seed is None:
         seed = secrets.randbits(32)
     a = np.empty(shape, np.uint32)
@@ -55,17 +63,22 @@ def morton_fill(position: np.ndarray, shape: Union[tuple, np.ndarray], seed: int
             # put in to read-only archive mode which makes this even more questionable.
             # The hash algorithm needn't be cryptographically secure, but we want something that we
             # can use on these inputs that are relatively small and close together, and we don't want
-            # to see streaks or other patterns in the results even when we're only looking at 16 bits
-            # of the result.
+            # to see streaks or other patterns in even when we're only looking at 16 bits of the result.
             x[...] = farmhash.FarmHash32WithSeed(buf, seed)
 
     # Convert unsigned int32 uniform distribution to normal distribution
     return scipy.stats.norm.ppf(a / (1 << 32), 0).astype(np.float16)
 
 
-@invocation("noise_cartesian", title="Cartesian Noise", tags=["latents", "noise"], category="latents", version="1.0.0")
-class CartesianNoiseInvocation(BaseInvocation):
-    """Generates latent noise."""
+@invocation("noise_coordinated", title="Coordinated Noise", tags=["latents", "noise"], category="latents", version="1.0.0")
+class CoordinatedNoiseInvocation(BaseInvocation):
+    """Generates latent noise that is stable for the given coordinates.
+
+    That is, the noise at channel=1 x=3 y=4 for seed=42 will always be the same, regardless of the
+    total size (width and height) of the region.
+
+    It makes reproducible noise that you're able to crop or scroll.
+    """
 
     _downsampling_factor = 8
     _latent_channels = 4
@@ -88,13 +101,12 @@ class CartesianNoiseInvocation(BaseInvocation):
         gt=0,
         description=FieldDescriptions.height,
     )
-    x0: int = InputField(default=0, description="x-coordinate of the lower edge")
-    y0: int = InputField(default=0, description="y-coordinate of the lower edge")
-    z0: int = InputField(default=0, description="coordinate of the first channel")
+    x_offset: int = InputField(default=0, description="x-coordinate of the lower edge")
+    y_offset: int = InputField(default=0, description="y-coordinate of the lower edge")
+    channel_offset: int = InputField(default=0, description="coordinate of the first channel")
 
     def invoke(self, context: InvocationContext) -> NoiseOutput:
-        origin = np.array([self.x0, self.y0, self.z0])
-        origin //= self._downsampling_factor
+        origin = np.array([self.x_offset, self.y_offset, self.channel_offset]) // self._downsampling_factor
         shape = np.array(
             [self._latent_channels, self.width // self._downsampling_factor, self.height // self._downsampling_factor]
         )
