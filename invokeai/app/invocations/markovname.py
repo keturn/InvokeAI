@@ -9,6 +9,7 @@ required dependencies: markovname~=1.0
 import json
 import random
 from importlib import resources
+from typing import Literal
 
 import markovname.data
 from markovname import generator
@@ -23,11 +24,11 @@ from invokeai.app.invocations.baseinvocation import (
 from invokeai.app.invocations.primitives import StringCollectionOutput, StringOutput
 from invokeai.app.util.misc import SEED_MAX, get_random_seed
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 
 def list_available_datasets() -> list[str]:
-    return list(resources.contents(markovname.data))
+    return list(s.rsplit(".", 1)[0] for s in resources.contents(markovname.data) if s.endswith(".json"))
 
 
 def load_markovname_dataset(name: str) -> list[str]:
@@ -63,23 +64,38 @@ class MarkovNameInvocation(BaseInvocation):
         description=FieldDescriptions.seed,
         default_factory=get_random_seed,
     )
-    dataset: list[str] = InputField()
+    dataset: list[str] = InputField(description="A collection of example names, used to train the generator.")
     order: int = InputField(
         default=3,
         description="Highest order of model to use. Will use Katz's back-off model. "
         "It looks for the next letter based on the last `n` letters.",
     )
-    prior: float = InputField(default=0, gte=0, lte=1)
+    prior: float = InputField(
+        default=0,
+        gte=0,
+        lte=1,
+        description='The Dirichlet "prior" setting adds a constant probability that any letter may '
+        "be picked as the next letter. It acts like an additive smoothing factor, making the "
+        "generated content a bit more unpredictable.",
+    )
 
     def invoke(self, context: InvocationContext) -> StringOutput:
         return StringOutput(value=generate_name(self.dataset, self.order, self.prior, self.seed))
 
 
-@invocation("markovname_loader", title="Markov Name Data Loader", category="string", version=__version__)
+# TODO: allow node editor front-end to use enums: https://github.com/invoke-ai/InvokeAI/issues/4659
+# Datasets = Enum("Datasets", ((s, s) for s in list_available_datasets()), type=str)
+# noinspection PyTypeHints
+Datasets = Literal[tuple(list_available_datasets())]
+
+
+@invocation(
+    "markovname_loader", title="Markov Name Data Loader", category="string", use_cache=False, version=__version__
+)
 class MarkovNameLoaderInvocation(BaseInvocation):
     """Load data for the Markov Name Generator."""
 
-    name: str = InputField()
+    dataset_name: Datasets = InputField(default="animals", description="The name of a data set in `markovname.data`.")
 
     def invoke(self, context: InvocationContext) -> StringCollectionOutput:
-        return StringCollectionOutput(collection=load_markovname_dataset(self.name))
+        return StringCollectionOutput(collection=load_markovname_dataset(self.dataset_name))
