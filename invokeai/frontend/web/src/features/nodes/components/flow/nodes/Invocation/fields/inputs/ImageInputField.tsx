@@ -9,9 +9,11 @@ import {
 } from 'features/dnd/types';
 import { fieldImageValueChanged } from 'features/nodes/store/nodesSlice';
 import {
+  FieldComponentProps,
   ImageInputFieldTemplate,
   ImageInputFieldValue,
-  FieldComponentProps,
+  ImagePolymorphicInputFieldTemplate,
+  ImagePolymorphicInputFieldValue,
 } from 'features/nodes/types/types';
 import { memo, useCallback, useMemo } from 'react';
 import { FaUndo } from 'react-icons/fa';
@@ -19,7 +21,10 @@ import { useGetImageDTOQuery } from 'services/api/endpoints/images';
 import { PostUploadAction } from 'services/api/types';
 
 const ImageInputFieldComponent = (
-  props: FieldComponentProps<ImageInputFieldValue, ImageInputFieldTemplate>
+  props: FieldComponentProps<
+    ImageInputFieldValue | ImagePolymorphicInputFieldValue,
+    ImageInputFieldTemplate | ImagePolymorphicInputFieldTemplate
+  >
 ) => {
   const { nodeId, field } = props;
   const dispatch = useAppDispatch();

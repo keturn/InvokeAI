@@ -1,5 +1,14 @@
+import { isBoolean, isInteger, isNumber, isString } from 'lodash-es';
 import { OpenAPIV3 } from 'openapi-types';
 import {
+  COLLECTION_MAP,
+  POLYMORPHIC_TYPES,
+  SINGLE_TO_POLYMORPHIC_MAP,
+  isCollectionItemType,
+  isPolymorphicItemType,
+} from '../types/constants';
+import {
+  BooleanCollectionInputFieldTemplate,
   BooleanInputFieldTemplate,
   ClipInputFieldTemplate,
   CollectionInputFieldTemplate,
@@ -11,10 +20,13 @@ import {
   DenoiseMaskInputFieldTemplate,
   EnumInputFieldTemplate,
   FieldType,
+  FloatCollectionInputFieldTemplate,
+  FloatPolymorphicInputFieldTemplate,
   FloatInputFieldTemplate,
   ImageCollectionInputFieldTemplate,
   ImageInputFieldTemplate,
   InputFieldTemplateBase,
+  IntegerCollectionInputFieldTemplate,
   IntegerInputFieldTemplate,
   InvocationFieldSchema,
   InvocationSchemaObject,
@@ -24,11 +36,36 @@ import {
   SDXLMainModelInputFieldTemplate,
   SDXLRefinerModelInputFieldTemplate,
   SchedulerInputFieldTemplate,
+  StringCollectionInputFieldTemplate,
   StringInputFieldTemplate,
   UNetInputFieldTemplate,
   VaeInputFieldTemplate,
   VaeModelInputFieldTemplate,
+  isArraySchemaObject,
+  isNonArraySchemaObject,
+  isRefObject,
+  isSchemaObject,
+  ControlPolymorphicInputFieldTemplate,
+  ColorPolymorphicInputFieldTemplate,
+  ColorCollectionInputFieldTemplate,
+  IntegerPolymorphicInputFieldTemplate,
+  StringPolymorphicInputFieldTemplate,
+  BooleanPolymorphicInputFieldTemplate,
+  ImagePolymorphicInputFieldTemplate,
+  LatentsPolymorphicInputFieldTemplate,
+  LatentsCollectionInputFieldTemplate,
+  ConditioningPolymorphicInputFieldTemplate,
+  ConditioningCollectionInputFieldTemplate,
+  ControlCollectionInputFieldTemplate,
+  ImageField,
+  LatentsField,
+  ConditioningField,
+  IPAdapterInputFieldTemplate,
+  IPAdapterModelInputFieldTemplate,
+  BoardInputFieldTemplate,
+  InputFieldTemplate,
 } from '../types/types';
+import { ControlField } from 'services/api/types';
 
 export type BaseFieldProperties = 'name' | 'title' | 'description';
 
@@ -45,15 +82,8 @@ export type BuildInputFieldArg = {
  * @example
  * refObjectToFieldType({ "$ref": "#/components/schemas/ImageField" }) --> 'ImageField'
  */
-export const refObjectToFieldType = (
-  refObject: OpenAPIV3.ReferenceObject
-): FieldType => {
-  const name = refObject.$ref.split('/').slice(-1)[0];
-  if (!name) {
-    throw `Unknown field type: ${name}`;
-  }
-  return name as FieldType;
-};
+export const refObjectToSchemaName = (refObject: OpenAPIV3.ReferenceObject) =>
+  refObject.$ref.split('/').slice(-1)[0];
 
 const buildIntegerInputFieldTemplate = ({
   schemaObject,
@@ -84,6 +114,57 @@ const buildIntegerInputFieldTemplate = ({
   if (schemaObject.exclusiveMinimum !== undefined) {
     template.exclusiveMinimum = schemaObject.exclusiveMinimum;
   }
+
+  return template;
+};
+
+const buildIntegerPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): IntegerPolymorphicInputFieldTemplate => {
+  const template: IntegerPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'IntegerPolymorphic',
+    default: schemaObject.default ?? 0,
+  };
+
+  if (schemaObject.multipleOf !== undefined) {
+    template.multipleOf = schemaObject.multipleOf;
+  }
+
+  if (schemaObject.maximum !== undefined) {
+    template.maximum = schemaObject.maximum;
+  }
+
+  if (schemaObject.exclusiveMaximum !== undefined) {
+    template.exclusiveMaximum = schemaObject.exclusiveMaximum;
+  }
+
+  if (schemaObject.minimum !== undefined) {
+    template.minimum = schemaObject.minimum;
+  }
+
+  if (schemaObject.exclusiveMinimum !== undefined) {
+    template.exclusiveMinimum = schemaObject.exclusiveMinimum;
+  }
+
+  return template;
+};
+
+const buildIntegerCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): IntegerCollectionInputFieldTemplate => {
+  const item_default =
+    isNumber(schemaObject.item_default) && isInteger(schemaObject.item_default)
+      ? schemaObject.item_default
+      : 0;
+  const template: IntegerCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'IntegerCollection',
+    default: schemaObject.default ?? [],
+    item_default,
+  };
 
   return template;
 };
@@ -121,6 +202,54 @@ const buildFloatInputFieldTemplate = ({
   return template;
 };
 
+const buildFloatPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): FloatPolymorphicInputFieldTemplate => {
+  const template: FloatPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'FloatPolymorphic',
+    default: schemaObject.default ?? 0,
+  };
+  if (schemaObject.multipleOf !== undefined) {
+    template.multipleOf = schemaObject.multipleOf;
+  }
+
+  if (schemaObject.maximum !== undefined) {
+    template.maximum = schemaObject.maximum;
+  }
+
+  if (schemaObject.exclusiveMaximum !== undefined) {
+    template.exclusiveMaximum = schemaObject.exclusiveMaximum;
+  }
+
+  if (schemaObject.minimum !== undefined) {
+    template.minimum = schemaObject.minimum;
+  }
+
+  if (schemaObject.exclusiveMinimum !== undefined) {
+    template.exclusiveMinimum = schemaObject.exclusiveMinimum;
+  }
+  return template;
+};
+
+const buildFloatCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): FloatCollectionInputFieldTemplate => {
+  const item_default = isNumber(schemaObject.item_default)
+    ? schemaObject.item_default
+    : 0;
+  const template: FloatCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'FloatCollection',
+    default: schemaObject.default ?? [],
+    item_default,
+  };
+
+  return template;
+};
+
 const buildStringInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -146,6 +275,48 @@ const buildStringInputFieldTemplate = ({
   return template;
 };
 
+const buildStringPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): StringPolymorphicInputFieldTemplate => {
+  const template: StringPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'StringPolymorphic',
+    default: schemaObject.default ?? '',
+  };
+
+  if (schemaObject.minLength !== undefined) {
+    template.minLength = schemaObject.minLength;
+  }
+
+  if (schemaObject.maxLength !== undefined) {
+    template.maxLength = schemaObject.maxLength;
+  }
+
+  if (schemaObject.pattern !== undefined) {
+    template.pattern = schemaObject.pattern;
+  }
+
+  return template;
+};
+
+const buildStringCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): StringCollectionInputFieldTemplate => {
+  const item_default = isString(schemaObject.item_default)
+    ? schemaObject.item_default
+    : '';
+  const template: StringCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'StringCollection',
+    default: schemaObject.default ?? [],
+    item_default,
+  };
+
+  return template;
+};
+
 const buildBooleanInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -154,6 +325,37 @@ const buildBooleanInputFieldTemplate = ({
     ...baseField,
     type: 'boolean',
     default: schemaObject.default ?? false,
+  };
+
+  return template;
+};
+
+const buildBooleanPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): BooleanPolymorphicInputFieldTemplate => {
+  const template: BooleanPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'BooleanPolymorphic',
+    default: schemaObject.default ?? false,
+  };
+
+  return template;
+};
+
+const buildBooleanCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): BooleanCollectionInputFieldTemplate => {
+  const item_default =
+    schemaObject.item_default && isBoolean(schemaObject.item_default)
+      ? schemaObject.item_default
+      : false;
+  const template: BooleanCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'BooleanCollection',
+    default: schemaObject.default ?? [],
+    item_default,
   };
 
   return template;
@@ -237,6 +439,32 @@ const buildControlNetModelInputFieldTemplate = ({
   return template;
 };
 
+const buildIPAdapterModelInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): IPAdapterModelInputFieldTemplate => {
+  const template: IPAdapterModelInputFieldTemplate = {
+    ...baseField,
+    type: 'IPAdapterModelField',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
+const buildBoardInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): BoardInputFieldTemplate => {
+  const template: BoardInputFieldTemplate = {
+    ...baseField,
+    type: 'BoardField',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
 const buildImageInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -250,6 +478,19 @@ const buildImageInputFieldTemplate = ({
   return template;
 };
 
+const buildImagePolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ImagePolymorphicInputFieldTemplate => {
+  const template: ImagePolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'ImagePolymorphic',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
 const buildImageCollectionInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -257,7 +498,8 @@ const buildImageCollectionInputFieldTemplate = ({
   const template: ImageCollectionInputFieldTemplate = {
     ...baseField,
     type: 'ImageCollection',
-    default: schemaObject.default ?? undefined,
+    default: schemaObject.default ?? [],
+    item_default: (schemaObject.item_default as ImageField) ?? undefined,
   };
 
   return template;
@@ -289,6 +531,33 @@ const buildLatentsInputFieldTemplate = ({
   return template;
 };
 
+const buildLatentsPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): LatentsPolymorphicInputFieldTemplate => {
+  const template: LatentsPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'LatentsPolymorphic',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
+const buildLatentsCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): LatentsCollectionInputFieldTemplate => {
+  const template: LatentsCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'LatentsCollection',
+    default: schemaObject.default ?? [],
+    item_default: (schemaObject.item_default as LatentsField) ?? undefined,
+  };
+
+  return template;
+};
+
 const buildConditioningInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -297,6 +566,33 @@ const buildConditioningInputFieldTemplate = ({
     ...baseField,
     type: 'ConditioningField',
     default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
+const buildConditioningPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ConditioningPolymorphicInputFieldTemplate => {
+  const template: ConditioningPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'ConditioningPolymorphic',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
+const buildConditioningCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ConditioningCollectionInputFieldTemplate => {
+  const template: ConditioningCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'ConditioningCollection',
+    default: schemaObject.default ?? [],
+    item_default: (schemaObject.item_default as ConditioningField) ?? undefined,
   };
 
   return template;
@@ -355,6 +651,46 @@ const buildControlInputFieldTemplate = ({
   return template;
 };
 
+const buildControlPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ControlPolymorphicInputFieldTemplate => {
+  const template: ControlPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'ControlPolymorphic',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
+const buildControlCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ControlCollectionInputFieldTemplate => {
+  const template: ControlCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'ControlCollection',
+    default: schemaObject.default ?? [],
+    item_default: (schemaObject.item_default as ControlField) ?? undefined,
+  };
+
+  return template;
+};
+
+const buildIPAdapterInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): IPAdapterInputFieldTemplate => {
+  const template: IPAdapterInputFieldTemplate = {
+    ...baseField,
+    type: 'IPAdapterField',
+    default: schemaObject.default ?? undefined,
+  };
+
+  return template;
+};
+
 const buildEnumInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -363,8 +699,8 @@ const buildEnumInputFieldTemplate = ({
   const template: EnumInputFieldTemplate = {
     ...baseField,
     type: 'enum',
-    enumType: (schemaObject.type as 'string' | 'number') ?? 'string', // TODO: dangerous?
-    options: options,
+    options,
+    ui_choice_labels: schemaObject.ui_choice_labels,
     default: schemaObject.default ?? options[0],
   };
 
@@ -408,6 +744,32 @@ const buildColorInputFieldTemplate = ({
   return template;
 };
 
+const buildColorPolymorphicInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ColorPolymorphicInputFieldTemplate => {
+  const template: ColorPolymorphicInputFieldTemplate = {
+    ...baseField,
+    type: 'ColorPolymorphic',
+    default: schemaObject.default ?? { r: 127, g: 127, b: 127, a: 255 },
+  };
+
+  return template;
+};
+
+const buildColorCollectionInputFieldTemplate = ({
+  schemaObject,
+  baseField,
+}: BuildInputFieldArg): ColorCollectionInputFieldTemplate => {
+  const template: ColorCollectionInputFieldTemplate = {
+    ...baseField,
+    type: 'ColorCollection',
+    default: schemaObject.default ?? [],
+  };
+
+  return template;
+};
+
 const buildSchedulerInputFieldTemplate = ({
   schemaObject,
   baseField,
@@ -421,44 +783,142 @@ const buildSchedulerInputFieldTemplate = ({
   return template;
 };
 
-export const getFieldType = (schemaObject: InvocationFieldSchema): string => {
-  let fieldType = '';
-
-  const { ui_type } = schemaObject;
-  if (ui_type) {
-    fieldType = ui_type;
+export const getFieldType = (
+  schemaObject: InvocationFieldSchema
+): string | undefined => {
+  if (schemaObject?.ui_type) {
+    return schemaObject.ui_type;
   } else if (!schemaObject.type) {
-    // console.log('refObject', schemaObject);
     // if schemaObject has no type, then it should have one of allOf, anyOf, oneOf
+
     if (schemaObject.allOf) {
-      fieldType = refObjectToFieldType(
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        schemaObject.allOf![0] as OpenAPIV3.ReferenceObject
-      );
+      const allOf = schemaObject.allOf;
+      if (allOf && allOf[0] && isRefObject(allOf[0])) {
+        return refObjectToSchemaName(allOf[0]);
+      }
     } else if (schemaObject.anyOf) {
-      fieldType = refObjectToFieldType(
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        schemaObject.anyOf![0] as OpenAPIV3.ReferenceObject
-      );
-    } else if (schemaObject.oneOf) {
-      fieldType = refObjectToFieldType(
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        schemaObject.oneOf![0] as OpenAPIV3.ReferenceObject
-      );
+      const anyOf = schemaObject.anyOf;
+      /**
+       * Handle Polymorphic inputs, eg string | string[]. In OpenAPI, this is:
+       * - an `anyOf` with two items
+       * - one is an `ArraySchemaObject` with a single `SchemaObject or ReferenceObject` of type T in its `items`
+       * - the other is a `SchemaObject` or `ReferenceObject` of type T
+       *
+       * Any other cases we ignore.
+       */
+
+      let firstType: string | undefined;
+      let secondType: string | undefined;
+
+      if (isArraySchemaObject(anyOf[0])) {
+        // first is array, second is not
+        const first = anyOf[0].items;
+        const second = anyOf[1];
+        if (isRefObject(first) && isRefObject(second)) {
+          firstType = refObjectToSchemaName(first);
+          secondType = refObjectToSchemaName(second);
+        } else if (
+          isNonArraySchemaObject(first) &&
+          isNonArraySchemaObject(second)
+        ) {
+          firstType = first.type;
+          secondType = second.type;
+        }
+      } else if (isArraySchemaObject(anyOf[1])) {
+        // first is not array, second is
+        const first = anyOf[0];
+        const second = anyOf[1].items;
+        if (isRefObject(first) && isRefObject(second)) {
+          firstType = refObjectToSchemaName(first);
+          secondType = refObjectToSchemaName(second);
+        } else if (
+          isNonArraySchemaObject(first) &&
+          isNonArraySchemaObject(second)
+        ) {
+          firstType = first.type;
+          secondType = second.type;
+        }
+      }
+      if (firstType === secondType && isPolymorphicItemType(firstType)) {
+        return SINGLE_TO_POLYMORPHIC_MAP[firstType];
+      }
     }
   } else if (schemaObject.enum) {
-    fieldType = 'enum';
+    return 'enum';
   } else if (schemaObject.type) {
     if (schemaObject.type === 'number') {
-      // floats are "number" in OpenAPI, while ints are "integer"
-      fieldType = 'float';
+      // floats are "number" in OpenAPI, while ints are "integer" - we need to distinguish them
+      return 'float';
+    } else if (schemaObject.type === 'array') {
+      const itemType = isSchemaObject(schemaObject.items)
+        ? schemaObject.items.type
+        : refObjectToSchemaName(schemaObject.items);
+
+      if (isCollectionItemType(itemType)) {
+        return COLLECTION_MAP[itemType];
+      }
+
+      return;
     } else {
-      fieldType = schemaObject.type;
+      return schemaObject.type;
     }
   }
-
-  return fieldType;
+  return;
 };
+
+const TEMPLATE_BUILDER_MAP: {
+  [key in FieldType]?: (arg: BuildInputFieldArg) => InputFieldTemplate;
+} = {
+  BoardField: buildBoardInputFieldTemplate,
+  boolean: buildBooleanInputFieldTemplate,
+  BooleanCollection: buildBooleanCollectionInputFieldTemplate,
+  BooleanPolymorphic: buildBooleanPolymorphicInputFieldTemplate,
+  ClipField: buildClipInputFieldTemplate,
+  Collection: buildCollectionInputFieldTemplate,
+  CollectionItem: buildCollectionItemInputFieldTemplate,
+  ColorCollection: buildColorCollectionInputFieldTemplate,
+  ColorField: buildColorInputFieldTemplate,
+  ColorPolymorphic: buildColorPolymorphicInputFieldTemplate,
+  ConditioningCollection: buildConditioningCollectionInputFieldTemplate,
+  ConditioningField: buildConditioningInputFieldTemplate,
+  ConditioningPolymorphic: buildConditioningPolymorphicInputFieldTemplate,
+  ControlCollection: buildControlCollectionInputFieldTemplate,
+  ControlField: buildControlInputFieldTemplate,
+  ControlNetModelField: buildControlNetModelInputFieldTemplate,
+  ControlPolymorphic: buildControlPolymorphicInputFieldTemplate,
+  DenoiseMaskField: buildDenoiseMaskInputFieldTemplate,
+  enum: buildEnumInputFieldTemplate,
+  float: buildFloatInputFieldTemplate,
+  FloatCollection: buildFloatCollectionInputFieldTemplate,
+  FloatPolymorphic: buildFloatPolymorphicInputFieldTemplate,
+  ImageCollection: buildImageCollectionInputFieldTemplate,
+  ImageField: buildImageInputFieldTemplate,
+  ImagePolymorphic: buildImagePolymorphicInputFieldTemplate,
+  integer: buildIntegerInputFieldTemplate,
+  IntegerCollection: buildIntegerCollectionInputFieldTemplate,
+  IntegerPolymorphic: buildIntegerPolymorphicInputFieldTemplate,
+  IPAdapterField: buildIPAdapterInputFieldTemplate,
+  IPAdapterModelField: buildIPAdapterModelInputFieldTemplate,
+  LatentsCollection: buildLatentsCollectionInputFieldTemplate,
+  LatentsField: buildLatentsInputFieldTemplate,
+  LatentsPolymorphic: buildLatentsPolymorphicInputFieldTemplate,
+  LoRAModelField: buildLoRAModelInputFieldTemplate,
+  MainModelField: buildMainModelInputFieldTemplate,
+  Scheduler: buildSchedulerInputFieldTemplate,
+  SDXLMainModelField: buildSDXLMainModelInputFieldTemplate,
+  SDXLRefinerModelField: buildRefinerModelInputFieldTemplate,
+  string: buildStringInputFieldTemplate,
+  StringCollection: buildStringCollectionInputFieldTemplate,
+  StringPolymorphic: buildStringPolymorphicInputFieldTemplate,
+  UNetField: buildUNetInputFieldTemplate,
+  VaeField: buildVaeInputFieldTemplate,
+  VaeModelField: buildVaeModelInputFieldTemplate,
+};
+
+const isTemplatedFieldType = (
+  fieldType: string | undefined
+): fieldType is keyof typeof TEMPLATE_BUILDER_MAP =>
+  Boolean(fieldType && fieldType in TEMPLATE_BUILDER_MAP);
 
 /**
  * Builds an input field from an invocation schema property.
@@ -474,7 +934,8 @@ export const buildInputFieldTemplate = (
   const { input, ui_hidden, ui_component, ui_type, ui_order } = fieldSchema;
 
   const extra = {
-    input,
+    // TODO: Can we support polymorphic inputs in the UI?
+    input: POLYMORPHIC_TYPES.includes(fieldType) ? 'connection' : input,
     ui_hidden,
     ui_component,
     ui_type,
@@ -490,146 +951,18 @@ export const buildInputFieldTemplate = (
     ...extra,
   };
 
-  if (fieldType === 'ImageField') {
-    return buildImageInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
+  if (!isTemplatedFieldType(fieldType)) {
+    return;
   }
-  if (fieldType === 'ImageCollection') {
-    return buildImageCollectionInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
+
+  const builder = TEMPLATE_BUILDER_MAP[fieldType];
+
+  if (!builder) {
+    return;
   }
-  if (fieldType === 'DenoiseMaskField') {
-    return buildDenoiseMaskInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'LatentsField') {
-    return buildLatentsInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'ConditioningField') {
-    return buildConditioningInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'UNetField') {
-    return buildUNetInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'ClipField') {
-    return buildClipInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'VaeField') {
-    return buildVaeInputFieldTemplate({ schemaObject: fieldSchema, baseField });
-  }
-  if (fieldType === 'ControlField') {
-    return buildControlInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'MainModelField') {
-    return buildMainModelInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'SDXLRefinerModelField') {
-    return buildRefinerModelInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'SDXLMainModelField') {
-    return buildSDXLMainModelInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'VaeModelField') {
-    return buildVaeModelInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'LoRAModelField') {
-    return buildLoRAModelInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'ControlNetModelField') {
-    return buildControlNetModelInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'enum') {
-    return buildEnumInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'integer') {
-    return buildIntegerInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'float') {
-    return buildFloatInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'string') {
-    return buildStringInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'boolean') {
-    return buildBooleanInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'Collection') {
-    return buildCollectionInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'CollectionItem') {
-    return buildCollectionItemInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'ColorField') {
-    return buildColorInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  if (fieldType === 'Scheduler') {
-    return buildSchedulerInputFieldTemplate({
-      schemaObject: fieldSchema,
-      baseField,
-    });
-  }
-  return;
+
+  return builder({
+    schemaObject: fieldSchema,
+    baseField,
+  });
 };

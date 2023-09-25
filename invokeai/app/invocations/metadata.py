@@ -42,7 +42,8 @@ class CoreMetadata(BaseModelExcludeNull):
     cfg_scale: float = Field(description="The classifier-free guidance scale parameter")
     steps: int = Field(description="The number of steps used for inference")
     scheduler: str = Field(description="The scheduler used for inference")
-    clip_skip: int = Field(
+    clip_skip: Optional[int] = Field(
+        default=None,
         description="The number of skipped CLIP layers",
     )
     model: MainModelField = Field(description="The main model used for inference")
@@ -98,7 +99,9 @@ class MetadataAccumulatorOutput(BaseInvocationOutput):
     metadata: CoreMetadata = OutputField(description="The core metadata for the image")
 
 
-@invocation("metadata_accumulator", title="Metadata Accumulator", tags=["metadata"], category="metadata")
+@invocation(
+    "metadata_accumulator", title="Metadata Accumulator", tags=["metadata"], category="metadata", version="1.0.0"
+)
 class MetadataAccumulatorInvocation(BaseInvocation):
     """Outputs a Core Metadata Object"""
 
@@ -114,7 +117,8 @@ class MetadataAccumulatorInvocation(BaseInvocation):
     cfg_scale: float = InputField(description="The classifier-free guidance scale parameter")
     steps: int = InputField(description="The number of steps used for inference")
     scheduler: str = InputField(description="The scheduler used for inference")
-    clip_skip: int = InputField(
+    clip_skip: Optional[int] = Field(
+        default=None,
         description="The number of skipped CLIP layers",
     )
     model: MainModelField = InputField(description="The main model used for inference")

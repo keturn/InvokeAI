@@ -3,8 +3,9 @@ import { createSelector } from '@reduxjs/toolkit';
 import { stateSelector } from 'app/store/store';
 import { useAppDispatch, useAppSelector } from 'app/store/storeHooks';
 import { defaultSelectorOptions } from 'app/store/util/defaultMemoizeOptions';
+import { $flow } from 'features/nodes/store/reactFlowInstance';
 import { contextMenusClosed } from 'features/ui/store/uiSlice';
-import { useCallback } from 'react';
+import { MouseEvent, useCallback, useRef } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Background,
@@ -13,12 +14,14 @@ import {
   OnConnectStart,
   OnEdgesChange,
   OnEdgesDelete,
+  OnInit,
   OnMoveEnd,
   OnNodesChange,
   OnNodesDelete,
   OnSelectionChangeFunc,
   ProOptions,
   ReactFlow,
+  XYPosition,
 } from 'reactflow';
 import { useIsValidConnection } from '../../hooks/useIsValidConnection';
 import {
@@ -77,7 +80,8 @@ export const Flow = () => {
   const edges = useAppSelector((state) => state.nodes.edges);
   const viewport = useAppSelector((state) => state.nodes.viewport);
   const { shouldSnapToGrid, selectionMode } = useAppSelector(selector);
-
+  const flowWrapper = useRef<HTMLDivElement>(null);
+  const cursorPosition = useRef<XYPosition>();
   const isValidConnection = useIsValidConnection();
 
   const [borderRadius] = useToken('radii', ['base']);
@@ -147,6 +151,22 @@ export const Flow = () => {
     dispatch(contextMenusClosed());
   }, [dispatch]);
 
+  const onInit: OnInit = useCallback((flow) => {
+    $flow.set(flow);
+    flow.fitView();
+  }, []);
+
+  const onMouseMove = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const bounds = flowWrapper.current?.getBoundingClientRect();
+    if (bounds) {
+      const pos = $flow.get()?.project({
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
+      });
+      cursorPosition.current = pos;
+    }
+  }, []);
+
   useHotkeys(['Ctrl+c', 'Meta+c'], (e) => {
     e.preventDefault();
     dispatch(selectionCopied());
@@ -159,17 +179,20 @@ export const Flow = () => {
 
   useHotkeys(['Ctrl+v', 'Meta+v'], (e) => {
     e.preventDefault();
-    dispatch(selectionPasted());
+    dispatch(selectionPasted({ cursorPosition: cursorPosition.current }));
   });
 
   return (
     <ReactFlow
       id="workflow-editor"
+      ref={flowWrapper}
       defaultViewport={viewport}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       nodes={nodes}
       edges={edges}
+      onInit={onInit}
+      onMouseMove={onMouseMove}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onEdgesDelete={onEdgesDelete}

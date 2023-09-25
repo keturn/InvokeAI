@@ -25,8 +25,8 @@ from .baseinvocation import (
     BaseInvocation,
     BaseInvocationOutput,
     FieldDescriptions,
-    InputField,
     Input,
+    InputField,
     InvocationContext,
     OutputField,
     UIComponent,
@@ -56,7 +56,7 @@ ORT_TO_NP_TYPE = {
 PRECISION_VALUES = Literal[tuple(list(ORT_TO_NP_TYPE.keys()))]
 
 
-@invocation("prompt_onnx", title="ONNX Prompt (Raw)", tags=["prompt", "onnx"], category="conditioning")
+@invocation("prompt_onnx", title="ONNX Prompt (Raw)", tags=["prompt", "onnx"], category="conditioning", version="1.0.0")
 class ONNXPromptInvocation(BaseInvocation):
     prompt: str = InputField(default="", description=FieldDescriptions.raw_prompt, ui_component=UIComponent.Textarea)
     clip: ClipField = InputField(description=FieldDescriptions.clip, input=Input.Connection)
@@ -95,9 +95,10 @@ class ONNXPromptInvocation(BaseInvocation):
                     print(f'Warn: trigger: "{trigger}" not found')
             if loras or ti_list:
                 text_encoder.release_session()
-            with ONNXModelPatcher.apply_lora_text_encoder(text_encoder, loras), ONNXModelPatcher.apply_ti(
-                orig_tokenizer, text_encoder, ti_list
-            ) as (tokenizer, ti_manager):
+            with (
+                ONNXModelPatcher.apply_lora_text_encoder(text_encoder, loras),
+                ONNXModelPatcher.apply_ti(orig_tokenizer, text_encoder, ti_list) as (tokenizer, ti_manager),
+            ):
                 text_encoder.create_session()
 
                 # copy from
@@ -143,6 +144,7 @@ class ONNXPromptInvocation(BaseInvocation):
     title="ONNX Text to Latents",
     tags=["latents", "inference", "txt2img", "onnx"],
     category="latents",
+    version="1.0.0",
 )
 class ONNXTextToLatentsInvocation(BaseInvocation):
     """Generates latents from conditionings."""
@@ -164,7 +166,6 @@ class ONNXTextToLatentsInvocation(BaseInvocation):
         default=7.5,
         ge=1,
         description=FieldDescriptions.cfg_scale,
-        ui_type=UIType.Float,
     )
     scheduler: SAMPLER_NAME_VALUES = InputField(
         default="euler", description=FieldDescriptions.scheduler, input=Input.Direct, ui_type=UIType.Scheduler
@@ -177,7 +178,6 @@ class ONNXTextToLatentsInvocation(BaseInvocation):
     control: Optional[Union[ControlField, list[ControlField]]] = InputField(
         default=None,
         description=FieldDescriptions.control,
-        ui_type=UIType.Control,
     )
     # seamless:   bool = InputField(default=False, description="Whether or not to generate an image that can tile without seams", )
     # seamless_axes: str = InputField(default="", description="The axes to tile the image on, 'x' and/or 'y'")
@@ -319,6 +319,7 @@ class ONNXTextToLatentsInvocation(BaseInvocation):
     title="ONNX Latents to Image",
     tags=["latents", "image", "vae", "onnx"],
     category="image",
+    version="1.0.0",
 )
 class ONNXLatentsToImageInvocation(BaseInvocation):
     """Generates an image from latents."""
@@ -403,7 +404,7 @@ class OnnxModelField(BaseModel):
     model_type: ModelType = Field(description="Model Type")
 
 
-@invocation("onnx_model_loader", title="ONNX Main Model", tags=["onnx", "model"], category="model")
+@invocation("onnx_model_loader", title="ONNX Main Model", tags=["onnx", "model"], category="model", version="1.0.0")
 class OnnxModelLoaderInvocation(BaseInvocation):
     """Loads a main model, outputting its submodels."""
 

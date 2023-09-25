@@ -9,18 +9,28 @@ import { useAppDispatch } from 'app/store/storeHooks';
 import { numberStringRegex } from 'common/components/IAINumberInput';
 import { fieldNumberValueChanged } from 'features/nodes/store/nodesSlice';
 import {
+  FieldComponentProps,
   FloatInputFieldTemplate,
   FloatInputFieldValue,
+  FloatPolymorphicInputFieldTemplate,
+  FloatPolymorphicInputFieldValue,
   IntegerInputFieldTemplate,
   IntegerInputFieldValue,
-  FieldComponentProps,
+  IntegerPolymorphicInputFieldTemplate,
+  IntegerPolymorphicInputFieldValue,
 } from 'features/nodes/types/types';
 import { memo, useEffect, useMemo, useState } from 'react';
 
 const NumberInputFieldComponent = (
   props: FieldComponentProps<
-    IntegerInputFieldValue | FloatInputFieldValue,
-    IntegerInputFieldTemplate | FloatInputFieldTemplate
+    | IntegerInputFieldValue
+    | IntegerPolymorphicInputFieldValue
+    | FloatInputFieldValue
+    | FloatPolymorphicInputFieldValue,
+    | IntegerInputFieldTemplate
+    | IntegerPolymorphicInputFieldTemplate
+    | FloatInputFieldTemplate
+    | FloatPolymorphicInputFieldTemplate
   >
 ) => {
   const { nodeId, field, fieldTemplate } = props;

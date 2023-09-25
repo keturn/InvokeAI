@@ -7,6 +7,7 @@ import { ImageDTO } from 'services/api/types';
 
 import { clipSkipMap } from '../types/constants';
 import {
+  CanvasCoherenceModeParam,
   CfgScaleParam,
   HeightParam,
   MainModelParam,
@@ -37,6 +38,7 @@ export interface GenerationState {
   scheduler: SchedulerParam;
   maskBlur: number;
   maskBlurMethod: MaskBlurMethodParam;
+  canvasCoherenceMode: CanvasCoherenceModeParam;
   canvasCoherenceSteps: number;
   canvasCoherenceStrength: StrengthParam;
   seed: SeedParam;
@@ -44,10 +46,10 @@ export interface GenerationState {
   shouldFitToWidthHeight: boolean;
   shouldGenerateVariations: boolean;
   shouldRandomizeSeed: boolean;
-  shouldUseNoiseSettings: boolean;
   steps: StepsParam;
   threshold: number;
-  tileSize: number;
+  infillTileSize: number;
+  infillPatchmatchDownscaleSize: number;
   variationAmount: number;
   width: WidthParam;
   shouldUseSymmetry: boolean;
@@ -77,6 +79,7 @@ export const initialGenerationState: GenerationState = {
   scheduler: 'euler',
   maskBlur: 16,
   maskBlurMethod: 'box',
+  canvasCoherenceMode: 'unmasked',
   canvasCoherenceSteps: 20,
   canvasCoherenceStrength: 0.3,
   seed: 0,
@@ -84,10 +87,10 @@ export const initialGenerationState: GenerationState = {
   shouldFitToWidthHeight: true,
   shouldGenerateVariations: false,
   shouldRandomizeSeed: true,
-  shouldUseNoiseSettings: false,
   steps: 50,
   threshold: 0,
-  tileSize: 32,
+  infillTileSize: 32,
+  infillPatchmatchDownscaleSize: 1,
   variationAmount: 0.1,
   width: 512,
   shouldUseSymmetry: false,
@@ -206,17 +209,29 @@ export const generationSlice = createSlice({
     setMaskBlurMethod: (state, action: PayloadAction<MaskBlurMethodParam>) => {
       state.maskBlurMethod = action.payload;
     },
+    setCanvasCoherenceMode: (
+      state,
+      action: PayloadAction<CanvasCoherenceModeParam>
+    ) => {
+      state.canvasCoherenceMode = action.payload;
+    },
     setCanvasCoherenceSteps: (state, action: PayloadAction<number>) => {
       state.canvasCoherenceSteps = action.payload;
     },
     setCanvasCoherenceStrength: (state, action: PayloadAction<number>) => {
       state.canvasCoherenceStrength = action.payload;
     },
-    setTileSize: (state, action: PayloadAction<number>) => {
-      state.tileSize = action.payload;
-    },
     setInfillMethod: (state, action: PayloadAction<string>) => {
       state.infillMethod = action.payload;
+    },
+    setInfillTileSize: (state, action: PayloadAction<number>) => {
+      state.infillTileSize = action.payload;
+    },
+    setInfillPatchmatchDownscaleSize: (
+      state,
+      action: PayloadAction<number>
+    ) => {
+      state.infillPatchmatchDownscaleSize = action.payload;
     },
     setShouldUseSymmetry: (state, action: PayloadAction<boolean>) => {
       state.shouldUseSymmetry = action.payload;
@@ -226,9 +241,6 @@ export const generationSlice = createSlice({
     },
     setVerticalSymmetrySteps: (state, action: PayloadAction<number>) => {
       state.verticalSymmetrySteps = action.payload;
-    },
-    setShouldUseNoiseSettings: (state, action: PayloadAction<boolean>) => {
-      state.shouldUseNoiseSettings = action.payload;
     },
     initialImageChanged: (state, action: PayloadAction<ImageDTO>) => {
       const { image_name, width, height } = action.payload;
@@ -261,12 +273,6 @@ export const generationSlice = createSlice({
     shouldUseCpuNoiseChanged: (state, action: PayloadAction<boolean>) => {
       state.shouldUseCpuNoise = action.payload;
     },
-    setShouldShowAdvancedOptions: (state, action: PayloadAction<boolean>) => {
-      state.shouldShowAdvancedOptions = action.payload;
-      if (!action.payload) {
-        state.clipSkip = 0;
-      }
-    },
     setAspectRatio: (state, action: PayloadAction<number | null>) => {
       const newAspectRatio = action.payload;
       state.aspectRatio = newAspectRatio;
@@ -296,12 +302,6 @@ export const generationSlice = createSlice({
         }
       }
     });
-    builder.addCase(setShouldShowAdvancedOptions, (state, action) => {
-      const advancedOptionsStatus = action.payload;
-      if (!advancedOptionsStatus) {
-        state.clipSkip = 0;
-      }
-    });
   },
 });
 
@@ -323,6 +323,7 @@ export const {
   setScheduler,
   setMaskBlur,
   setMaskBlurMethod,
+  setCanvasCoherenceMode,
   setCanvasCoherenceSteps,
   setCanvasCoherenceStrength,
   setSeed,
@@ -332,7 +333,8 @@ export const {
   setShouldRandomizeSeed,
   setSteps,
   setThreshold,
-  setTileSize,
+  setInfillTileSize,
+  setInfillPatchmatchDownscaleSize,
   setVariationAmount,
   setShouldUseSymmetry,
   setHorizontalSymmetrySteps,
@@ -340,12 +342,10 @@ export const {
   initialImageChanged,
   modelChanged,
   vaeSelected,
-  setShouldUseNoiseSettings,
   setSeamlessXAxis,
   setSeamlessYAxis,
   setClipSkip,
   shouldUseCpuNoiseChanged,
-  setShouldShowAdvancedOptions,
   setAspectRatio,
   setShouldLockAspectRatio,
   vaePrecisionChanged,

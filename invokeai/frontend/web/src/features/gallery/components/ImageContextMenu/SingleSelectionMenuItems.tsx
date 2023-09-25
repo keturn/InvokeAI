@@ -1,21 +1,22 @@
 import { Flex, MenuItem, Spinner } from '@chakra-ui/react';
+import { useStore } from '@nanostores/react';
 import { useAppToaster } from 'app/components/Toaster';
-import { useAppDispatch } from 'app/store/storeHooks';
+import { $customStarUI } from 'app/store/nanostores/customStarUI';
+import { useAppDispatch, useAppSelector } from 'app/store/storeHooks';
 import { setInitialCanvasImage } from 'features/canvas/store/canvasSlice';
 import {
   imagesToChangeSelected,
   isModalOpenChanged,
 } from 'features/changeBoardModal/store/slice';
 import { imagesToDeleteSelected } from 'features/deleteImageModal/store/slice';
-import { workflowLoaded } from 'features/nodes/store/nodesSlice';
+import { workflowLoadRequested } from 'features/nodes/store/actions';
 import { useRecallParameters } from 'features/parameters/hooks/useRecallParameters';
 import { initialImageSelected } from 'features/parameters/store/actions';
 import { useFeatureStatus } from 'features/system/hooks/useFeatureStatus';
-import { addToast } from 'features/system/store/systemSlice';
-import { makeToast } from 'features/system/util/makeToast';
 import { useCopyImageToClipboard } from 'features/ui/hooks/useCopyImageToClipboard';
 import { setActiveTab } from 'features/ui/store/uiSlice';
 import { memo, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FaAsterisk,
@@ -28,13 +29,15 @@ import {
   FaShare,
   FaTrash,
 } from 'react-icons/fa';
-import { MdDeviceHub, MdStar, MdStarBorder } from 'react-icons/md';
+import { FaCircleNodes } from 'react-icons/fa6';
+import { MdStar, MdStarBorder } from 'react-icons/md';
 import {
   useGetImageMetadataFromFileQuery,
   useStarImagesMutation,
   useUnstarImagesMutation,
 } from 'services/api/endpoints/images';
 import { ImageDTO } from 'services/api/types';
+import { configSelector } from '../../../system/store/configSelectors';
 import { sentImageToCanvas, sentImageToImg2Img } from '../../store/actions';
 
 type SingleSelectionMenuItemsProps = {
@@ -50,9 +53,11 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
   const toaster = useAppToaster();
 
   const isCanvasEnabled = useFeatureStatus('unifiedCanvas').isFeatureEnabled;
+  const { shouldFetchMetadataFromApi } = useAppSelector(configSelector);
+  const customStarUi = useStore($customStarUI);
 
   const { metadata, workflow, isLoading } = useGetImageMetadataFromFileQuery(
-    imageDTO,
+    { image: imageDTO, shouldFetchMetadataFromApi },
     {
       selectFromResult: (res) => ({
         isLoading: res.isFetching,
@@ -102,16 +107,7 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
     if (!workflow) {
       return;
     }
-    dispatch(workflowLoaded(workflow));
-    dispatch(setActiveTab('nodes'));
-    dispatch(
-      addToast(
-        makeToast({
-          title: 'Workflow Loaded',
-          status: 'success',
-        })
-      )
-    );
+    dispatch(workflowLoadRequested(workflow));
   }, [dispatch, workflow]);
 
   const handleSendToImageToImage = useCallback(() => {
@@ -121,8 +117,10 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
 
   const handleSendToCanvas = useCallback(() => {
     dispatch(sentImageToCanvas());
+    flushSync(() => {
+      dispatch(setActiveTab('unifiedCanvas'));
+    });
     dispatch(setInitialCanvasImage(imageDTO));
-    dispatch(setActiveTab('unifiedCanvas'));
 
     toaster({
       title: t('toast.sentToUnifiedCanvas'),
@@ -183,7 +181,7 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
         {t('parameters.downloadImage')}
       </MenuItem>
       <MenuItem
-        icon={isLoading ? <SpinnerIcon /> : <MdDeviceHub />}
+        icon={isLoading ? <SpinnerIcon /> : <FaCircleNodes />}
         onClickCapture={handleLoadWorkflow}
         isDisabled={isLoading || !workflow}
       >
@@ -234,12 +232,18 @@ const SingleSelectionMenuItems = (props: SingleSelectionMenuItemsProps) => {
         Change Board
       </MenuItem>
       {imageDTO.starred ? (
-        <MenuItem icon={<MdStar />} onClickCapture={handleUnstarImage}>
-          Unstar Image
+        <MenuItem
+          icon={customStarUi ? customStarUi.off.icon : <MdStar />}
+          onClickCapture={handleUnstarImage}
+        >
+          {customStarUi ? customStarUi.off.text : `Unstar Image`}
         </MenuItem>
       ) : (
-        <MenuItem icon={<MdStarBorder />} onClickCapture={handleStarImage}>
-          Star Image
+        <MenuItem
+          icon={customStarUi ? customStarUi.on.icon : <MdStarBorder />}
+          onClickCapture={handleStarImage}
+        >
+          {customStarUi ? customStarUi.on.text : `Star Image`}
         </MenuItem>
       )}
       <MenuItem

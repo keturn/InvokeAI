@@ -11,6 +11,7 @@ The work is actually done in backend code in model_install_backend.py.
 
 import argparse
 import curses
+import logging
 import sys
 import textwrap
 import traceback
@@ -20,37 +21,31 @@ from multiprocessing.connection import Connection, Pipe
 from pathlib import Path
 from shutil import get_terminal_size
 
-import logging
 import npyscreen
 import torch
 from npyscreen import widget
 
-from invokeai.backend.util.logging import InvokeAILogger
-
-from invokeai.backend.install.model_install_backend import (
-    InstallSelections,
-    ModelInstall,
-    SchedulerPredictionType,
-)
+from invokeai.app.services.config import InvokeAIAppConfig
+from invokeai.backend.install.model_install_backend import InstallSelections, ModelInstall, SchedulerPredictionType
 from invokeai.backend.model_management import ModelManager, ModelType
 from invokeai.backend.util import choose_precision, choose_torch_device
+from invokeai.backend.util.logging import InvokeAILogger
 from invokeai.frontend.install.widgets import (
+    MIN_COLS,
+    MIN_LINES,
+    BufferBox,
     CenteredTitleText,
+    CyclingForm,
     MultiSelectColumns,
     SingleSelectColumns,
     TextBox,
-    BufferBox,
-    set_min_terminal_size,
-    select_stable_diffusion_config_file,
-    CyclingForm,
-    MIN_COLS,
-    MIN_LINES,
     WindowTooSmallException,
+    select_stable_diffusion_config_file,
+    set_min_terminal_size,
 )
-from invokeai.app.services.config import InvokeAIAppConfig
 
 config = InvokeAIAppConfig.get_config()
-logger = InvokeAILogger.getLogger()
+logger = InvokeAILogger.get_logger()
 
 # build a table mapping all non-printable characters to None
 # for stripping control characters
@@ -657,7 +652,7 @@ def process_and_execute(
         translator = StderrToMessage(conn_out)
         sys.stderr = translator
         sys.stdout = translator
-        logger = InvokeAILogger.getLogger()
+        logger = InvokeAILogger.get_logger()
         logger.handlers.clear()
         logger.addHandler(logging.StreamHandler(translator))
 
@@ -770,7 +765,7 @@ def main():
     if opt.full_precision:
         invoke_args.extend(["--precision", "float32"])
     config.parse_args(invoke_args)
-    logger = InvokeAILogger().getLogger(config=config)
+    logger = InvokeAILogger().get_logger(config=config)
 
     if not config.model_conf_path.exists():
         logger.info("Your InvokeAI root directory is not set up. Calling invokeai-configure.")

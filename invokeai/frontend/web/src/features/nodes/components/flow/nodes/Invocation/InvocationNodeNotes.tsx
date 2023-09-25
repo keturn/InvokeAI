@@ -12,6 +12,7 @@ import {
   Tooltip,
   useDisclosure,
 } from '@chakra-ui/react';
+import { compare } from 'compare-versions';
 import { useNodeData } from 'features/nodes/hooks/useNodeData';
 import { useNodeLabel } from 'features/nodes/hooks/useNodeLabel';
 import { useNodeTemplate } from 'features/nodes/hooks/useNodeTemplate';
@@ -20,6 +21,8 @@ import { isInvocationNodeData } from 'features/nodes/types/types';
 import { memo, useMemo } from 'react';
 import { FaInfoCircle } from 'react-icons/fa';
 import NotesTextarea from './NotesTextarea';
+import { useDoNodeVersionsMatch } from 'features/nodes/hooks/useDoNodeVersionsMatch';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   nodeId: string;
@@ -29,6 +32,8 @@ const InvocationNodeNotes = ({ nodeId }: Props) => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const label = useNodeLabel(nodeId);
   const title = useNodeTemplateTitle(nodeId);
+  const doVersionsMatch = useDoNodeVersionsMatch(nodeId);
+  const { t } = useTranslation();
 
   return (
     <>
@@ -50,7 +55,11 @@ const InvocationNodeNotes = ({ nodeId }: Props) => {
         >
           <Icon
             as={FaInfoCircle}
-            sx={{ boxSize: 4, w: 8, color: 'base.400' }}
+            sx={{
+              boxSize: 4,
+              w: 8,
+              color: doVersionsMatch ? 'base.400' : 'error.400',
+            }}
           />
         </Flex>
       </Tooltip>
@@ -58,7 +67,7 @@ const InvocationNodeNotes = ({ nodeId }: Props) => {
       <Modal isOpen={isOpen} onClose={onClose} isCentered>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>{label || title || 'Unknown Node'}</ModalHeader>
+          <ModalHeader>{label || title || t('nodes.unknownNode')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <NotesTextarea nodeId={nodeId} />
@@ -75,6 +84,7 @@ export default memo(InvocationNodeNotes);
 const TooltipContent = memo(({ nodeId }: { nodeId: string }) => {
   const data = useNodeData(nodeId);
   const nodeTemplate = useNodeTemplate(nodeId);
+  const { t } = useTranslation();
 
   const title = useMemo(() => {
     if (data?.label && nodeTemplate?.title) {
@@ -89,19 +99,66 @@ const TooltipContent = memo(({ nodeId }: { nodeId: string }) => {
       return nodeTemplate.title;
     }
 
-    return 'Unknown Node';
-  }, [data, nodeTemplate]);
+    return t('nodes.unknownNode');
+  }, [data, nodeTemplate, t]);
+
+  const versionComponent = useMemo(() => {
+    if (!isInvocationNodeData(data) || !nodeTemplate) {
+      return null;
+    }
+
+    if (!data.version) {
+      return (
+        <Text as="span" sx={{ color: 'error.500' }}>
+          {t('nodes.versionUnknown')}
+        </Text>
+      );
+    }
+
+    if (!nodeTemplate.version) {
+      return (
+        <Text as="span" sx={{ color: 'error.500' }}>
+          {t('nodes.version')} {data.version} ({t('nodes.unknownTemplate')})
+        </Text>
+      );
+    }
+
+    if (compare(data.version, nodeTemplate.version, '<')) {
+      return (
+        <Text as="span" sx={{ color: 'error.500' }}>
+          {t('nodes.version')} {data.version} ({t('nodes.updateNode')})
+        </Text>
+      );
+    }
+
+    if (compare(data.version, nodeTemplate.version, '>')) {
+      return (
+        <Text as="span" sx={{ color: 'error.500' }}>
+          {t('nodes.version')} {data.version} ({t('nodes.updateApp')})
+        </Text>
+      );
+    }
+
+    return (
+      <Text as="span">
+        {t('nodes.version')} {data.version}
+      </Text>
+    );
+  }, [data, nodeTemplate, t]);
 
   if (!isInvocationNodeData(data)) {
-    return <Text sx={{ fontWeight: 600 }}>Unknown Node</Text>;
+    return <Text sx={{ fontWeight: 600 }}>{t('nodes.unknownNode')}</Text>;
   }
 
   return (
     <Flex sx={{ flexDir: 'column' }}>
-      <Text sx={{ fontWeight: 600 }}>{title}</Text>
+      <Text as="span" sx={{ fontWeight: 600 }}>
+        {title}
+      </Text>
       <Text sx={{ opacity: 0.7, fontStyle: 'oblique 5deg' }}>
         {nodeTemplate?.description}
       </Text>
+      {versionComponent}
       {data?.notes && <Text>{data.notes}</Text>}
     </Flex>
   );

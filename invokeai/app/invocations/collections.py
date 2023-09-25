@@ -10,7 +10,9 @@ from invokeai.app.util.misc import SEED_MAX, get_random_seed
 from .baseinvocation import BaseInvocation, InputField, InvocationContext, invocation
 
 
-@invocation("range", title="Integer Range", tags=["collection", "integer", "range"], category="collections")
+@invocation(
+    "range", title="Integer Range", tags=["collection", "integer", "range"], category="collections", version="1.0.0"
+)
 class RangeInvocation(BaseInvocation):
     """Creates a range of numbers from start to stop with step"""
 
@@ -33,16 +35,19 @@ class RangeInvocation(BaseInvocation):
     title="Integer Range of Size",
     tags=["collection", "integer", "size", "range"],
     category="collections",
+    version="1.0.0",
 )
 class RangeOfSizeInvocation(BaseInvocation):
-    """Creates a range from start to start + size with step"""
+    """Creates a range from start to start + (size * step) incremented by step"""
 
     start: int = InputField(default=0, description="The start of the range")
-    size: int = InputField(default=1, description="The number of values")
+    size: int = InputField(default=1, gt=0, description="The number of values")
     step: int = InputField(default=1, description="The step of the range")
 
     def invoke(self, context: InvocationContext) -> IntegerCollectionOutput:
-        return IntegerCollectionOutput(collection=list(range(self.start, self.start + self.size, self.step)))
+        return IntegerCollectionOutput(
+            collection=list(range(self.start, self.start + (self.step * self.size), self.step))
+        )
 
 
 @invocation(
@@ -50,6 +55,8 @@ class RangeOfSizeInvocation(BaseInvocation):
     title="Random Range",
     tags=["range", "integer", "random", "collection"],
     category="collections",
+    version="1.0.0",
+    use_cache=False,
 )
 class RandomRangeInvocation(BaseInvocation):
     """Creates a collection of random numbers"""
