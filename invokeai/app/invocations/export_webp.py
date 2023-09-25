@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import Field
 
-from invokeai.app.invocations.baseinvocation import BaseInvocation, InvocationContext, InputField, invocation
+from invokeai.app.invocations.baseinvocation import BaseInvocation, InputField, InvocationContext, invocation
 from invokeai.app.invocations.metadata import ImageMetadata
 from invokeai.app.invocations.primitives import ImageField, ImageOutput
 
@@ -63,8 +63,9 @@ class MetadataXMPSerializer:
         for prefix, uri in self._XML_NAMESPACES.items():
             ET.register_namespace(prefix, uri)
 
-        root = ET.Element("rdf:RDF")
-        desc = ET.SubElement(root, "rdf:Description", about="")
+        RDF = self._XML_NAMESPACES["rdf"]
+        root = ET.Element(f"{{{RDF}}}RDF")
+        desc = ET.SubElement(root, f"{{{RDF}}}Description", attrib={f"{{{RDF}}}about": ""})
 
         # We have to expand the namespace prefix for the Element constructor.
         for key, value in xmp_data.items():
@@ -85,7 +86,7 @@ class MetadataXMPSerializer:
         raise NotImplementedError()  # return bytes()
 
 
-@invocation("export_image", title="Export Image (WebP)", tags=["image"], category="image")
+@invocation("export_image", title="Export Image (WebP)", tags=["image"], category="image", version="0.1.0")
 class WebExportInvocation(BaseInvocation):
     """Export an image in WebP format."""
 
