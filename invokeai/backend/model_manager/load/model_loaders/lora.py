@@ -9,17 +9,17 @@ import torch
 from safetensors.torch import load_file
 
 from invokeai.app.services.config import InvokeAIAppConfig
-from invokeai.backend.model_manager import (
+from invokeai.backend.model_manager.config import AnyModelConfig
+from invokeai.backend.model_manager.load.load_default import ModelLoader
+from invokeai.backend.model_manager.load.model_cache.model_cache import ModelCache
+from invokeai.backend.model_manager.load.model_loader_registry import ModelLoaderRegistry
+from invokeai.backend.model_manager.taxonomy import (
     AnyModel,
-    AnyModelConfig,
     BaseModelType,
     ModelFormat,
     ModelType,
     SubModelType,
 )
-from invokeai.backend.model_manager.load.load_default import ModelLoader
-from invokeai.backend.model_manager.load.model_cache.model_cache import ModelCache
-from invokeai.backend.model_manager.load.model_loader_registry import ModelLoaderRegistry
 from invokeai.backend.patches.lora_conversions.flux_control_lora_utils import (
     is_state_dict_likely_flux_control,
     lora_model_from_flux_control_state_dict,
@@ -30,6 +30,10 @@ from invokeai.backend.patches.lora_conversions.flux_diffusers_lora_conversion_ut
 from invokeai.backend.patches.lora_conversions.flux_kohya_lora_conversion_utils import (
     is_state_dict_likely_in_flux_kohya_format,
     lora_model_from_flux_kohya_state_dict,
+)
+from invokeai.backend.patches.lora_conversions.flux_onetrainer_lora_conversion_utils import (
+    is_state_dict_likely_in_flux_onetrainer_format,
+    lora_model_from_flux_onetrainer_state_dict,
 )
 from invokeai.backend.patches.lora_conversions.sd_lora_conversion_utils import lora_model_from_sd_state_dict
 from invokeai.backend.patches.lora_conversions.sdxl_lora_conversion_utils import convert_sdxl_keys_to_diffusers_format
@@ -84,8 +88,12 @@ class LoRALoader(ModelLoader):
             elif config.format == ModelFormat.LyCORIS:
                 if is_state_dict_likely_in_flux_kohya_format(state_dict=state_dict):
                     model = lora_model_from_flux_kohya_state_dict(state_dict=state_dict)
+                elif is_state_dict_likely_in_flux_onetrainer_format(state_dict=state_dict):
+                    model = lora_model_from_flux_onetrainer_state_dict(state_dict=state_dict)
                 elif is_state_dict_likely_flux_control(state_dict=state_dict):
                     model = lora_model_from_flux_control_state_dict(state_dict=state_dict)
+                else:
+                    raise ValueError(f"LoRA model is in unsupported FLUX format: {config.format}")
             else:
                 raise ValueError(f"LoRA model is in unsupported FLUX format: {config.format}")
         elif self._model_base in [BaseModelType.StableDiffusion1, BaseModelType.StableDiffusion2]:

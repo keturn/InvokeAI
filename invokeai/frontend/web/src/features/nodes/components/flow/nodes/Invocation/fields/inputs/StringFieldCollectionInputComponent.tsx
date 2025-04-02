@@ -1,9 +1,10 @@
 import type { SystemStyleObject } from '@invoke-ai/ui-library';
-import { Button, Divider, Flex, FormLabel, Grid, GridItem, IconButton, Input } from '@invoke-ai/ui-library';
+import { Button, Divider, Flex, Grid, GridItem, IconButton, Input, Text } from '@invoke-ai/ui-library';
 import { useAppStore } from 'app/store/nanostores/store';
 import { getOverlayScrollbarsParams, overlayScrollbarsStyles } from 'common/components/OverlayScrollbars/constants';
-import { useFieldIsInvalid } from 'features/nodes/hooks/useFieldIsInvalid';
+import { useInputFieldIsInvalid } from 'features/nodes/hooks/useInputFieldIsInvalid';
 import { fieldStringCollectionValueChanged } from 'features/nodes/store/nodesSlice';
+import { NO_DRAG_CLASS, NO_WHEEL_CLASS } from 'features/nodes/types/constants';
 import type {
   StringFieldCollectionInputInstance,
   StringFieldCollectionInputTemplate,
@@ -16,7 +17,7 @@ import { PiXBold } from 'react-icons/pi';
 
 import type { FieldComponentProps } from './types';
 
-const overlayscrollbarsOptions = getOverlayScrollbarsParams().options;
+const overlayscrollbarsOptions = getOverlayScrollbarsParams({}).options;
 
 const sx = {
   borderWidth: 1,
@@ -32,7 +33,7 @@ export const StringFieldCollectionInputComponent = memo(
     const { t } = useTranslation();
     const store = useAppStore();
 
-    const isInvalid = useFieldIsInvalid(nodeId, field.name);
+    const isInvalid = useInputFieldIsInvalid(nodeId, field.name);
 
     const onRemoveString = useCallback(
       (index: number) => {
@@ -59,7 +60,7 @@ export const StringFieldCollectionInputComponent = memo(
 
     return (
       <Flex
-        className="nodrag"
+        className={NO_DRAG_CLASS}
         position="relative"
         w="full"
         h="auto"
@@ -80,7 +81,7 @@ export const StringFieldCollectionInputComponent = memo(
           <>
             <Divider />
             <OverlayScrollbarsComponent
-              className="nowheel"
+              className={NO_WHEEL_CLASS}
               defer
               style={overlayScrollbarsStyles}
               options={overlayscrollbarsOptions}
@@ -106,42 +107,6 @@ export const StringFieldCollectionInputComponent = memo(
 
 StringFieldCollectionInputComponent.displayName = 'StringFieldCollectionInputComponent';
 
-type StringListItemContentProps = {
-  value: string;
-  index: number;
-  onRemoveString: (index: number) => void;
-  onChangeString: (index: number, value: string) => void;
-};
-
-const StringListItemContent = memo(({ value, index, onRemoveString, onChangeString }: StringListItemContentProps) => {
-  const { t } = useTranslation();
-
-  const onClickRemove = useCallback(() => {
-    onRemoveString(index);
-  }, [index, onRemoveString]);
-  const onChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      onChangeString(index, e.target.value);
-    },
-    [index, onChangeString]
-  );
-  return (
-    <Flex alignItems="center" gap={1}>
-      <Input size="xs" resize="none" value={value} onChange={onChange} />
-      <IconButton
-        size="sm"
-        variant="link"
-        alignSelf="stretch"
-        onClick={onClickRemove}
-        icon={<PiXBold />}
-        aria-label={t('common.remove')}
-        tooltip={t('common.remove')}
-      />
-    </Flex>
-  );
-});
-StringListItemContent.displayName = 'StringListItemContent';
-
 type ListItemContentProps = {
   value: string;
   index: number;
@@ -165,19 +130,26 @@ const ListItemContent = memo(({ value, index, onRemoveString, onChangeString }: 
   return (
     <>
       <GridItem>
-        <FormLabel ps={1} m={0}>
+        <Text variant="subtext" textAlign="center" minW={8}>
           {index + 1}.
-        </FormLabel>
+        </Text>
       </GridItem>
       <GridItem>
-        <Input size="sm" resize="none" value={value} onChange={onChange} />
+        <Input
+          placeholder={t('workflows.emptyStringPlaceholder')}
+          size="sm"
+          resize="none"
+          value={value}
+          onChange={onChange}
+        />
       </GridItem>
       <GridItem>
         <IconButton
           tabIndex={-1}
           size="sm"
           variant="link"
-          alignSelf="stretch"
+          minW={8}
+          minH={8}
           onClick={onClickRemove}
           icon={<PiXBold />}
           aria-label={t('common.delete')}

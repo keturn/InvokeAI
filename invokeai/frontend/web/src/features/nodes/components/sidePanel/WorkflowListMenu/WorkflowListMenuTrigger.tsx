@@ -1,38 +1,27 @@
-import type { SystemStyleObject } from '@invoke-ai/ui-library';
-import { Flex, IconButton } from '@invoke-ai/ui-library';
-import { useWorkflowListMenu } from 'features/nodes/store/workflowListMenu';
+import { Button, Text } from '@invoke-ai/ui-library';
+import { useAppSelector } from 'app/store/storeHooks';
+import { useWorkflowLibraryModal } from 'features/nodes/store/workflowLibraryModal';
+import { selectWorkflowName } from 'features/nodes/store/workflowSlice';
 import { useTranslation } from 'react-i18next';
-import { PiCaretDownBold } from 'react-icons/pi';
-
-import { ActiveWorkflow } from './ActiveWorkflow';
-
-const _hover: SystemStyleObject = {
-  bg: 'base.750',
-};
+import { PiFolderOpenFill } from 'react-icons/pi';
 
 export const WorkflowListMenuTrigger = () => {
-  const workflowListMenu = useWorkflowListMenu();
+  const workflowLibraryModal = useWorkflowLibraryModal();
   const { t } = useTranslation();
+  const workflowName = useAppSelector(selectWorkflowName);
 
   return (
-    <Flex
-      onClick={workflowListMenu.toggle}
-      backgroundColor="base.800"
-      justifyContent="space-between"
-      alignItems="center"
-      py={2}
-      px={3}
-      borderRadius="base"
-      gap={2}
-      role="button"
-      _hover={_hover}
-      transitionProperty="background-color"
-      transitionDuration="normal"
-      w="full"
-      cursor="pointer"
-    >
-      <ActiveWorkflow />
-      <IconButton aria-label={t('stylePresets.viewList')} variant="ghost" icon={<PiCaretDownBold />} size="sm" />
-    </Flex>
+    <Button variant="ghost" rightIcon={<PiFolderOpenFill />} size="sm" onClick={workflowLibraryModal.open}>
+      <Text
+        display="auto"
+        noOfLines={1}
+        overflow="hidden"
+        textOverflow="ellipsis"
+        whiteSpace="nowrap"
+        wordBreak="break-all"
+      >
+        {workflowName || t('workflows.chooseWorkflowFromLibrary')}
+      </Text>
+    </Button>
   );
 };

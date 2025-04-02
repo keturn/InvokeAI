@@ -4,7 +4,7 @@ from typing import Iterator, Literal, Optional, Tuple
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5Tokenizer, T5TokenizerFast
 
-from invokeai.app.invocations.baseinvocation import BaseInvocation, Classification, invocation
+from invokeai.app.invocations.baseinvocation import BaseInvocation, invocation
 from invokeai.app.invocations.fields import (
     FieldDescriptions,
     FluxConditioningField,
@@ -17,20 +17,19 @@ from invokeai.app.invocations.model import CLIPField, T5EncoderField
 from invokeai.app.invocations.primitives import FluxConditioningOutput
 from invokeai.app.services.shared.invocation_context import InvocationContext
 from invokeai.backend.flux.modules.conditioner import HFEncoder
-from invokeai.backend.model_manager.config import ModelFormat
+from invokeai.backend.model_manager import ModelFormat
 from invokeai.backend.patches.layer_patcher import LayerPatcher
-from invokeai.backend.patches.lora_conversions.flux_lora_constants import FLUX_LORA_CLIP_PREFIX
+from invokeai.backend.patches.lora_conversions.flux_lora_constants import FLUX_LORA_CLIP_PREFIX, FLUX_LORA_T5_PREFIX
 from invokeai.backend.patches.model_patch_raw import ModelPatchRaw
 from invokeai.backend.stable_diffusion.diffusion.conditioning_data import ConditioningFieldData, FLUXConditioningInfo
 
 
 @invocation(
     "flux_text_encoder",
-    title="FLUX Text Encoding",
+    title="Prompt - FLUX",
     tags=["prompt", "conditioning", "flux"],
     category="conditioning",
-    version="1.1.1",
-    classification=Classification.Prototype,
+    version="1.1.2",
 )
 class FluxTextEncoderInvocation(BaseInvocation):
     """Encodes and preps a prompt for a flux image."""
@@ -71,12 +70,44 @@ class FluxTextEncoderInvocation(BaseInvocation):
     def _t5_encode(self, context: InvocationContext) -> torch.Tensor:
         prompt = [self.prompt]
 
+        t5_encoder_info = context.models.load(self.t5_encoder.text_encoder)
+        t5_encoder_config = t5_encoder_info.config
+        assert t5_encoder_config is not None
+
         with (
-            context.models.load(self.t5_encoder.text_encoder) as t5_text_encoder,
+            t5_encoder_info.model_on_device() as (cached_weights, t5_text_encoder),
             context.models.load(self.t5_encoder.tokenizer) as t5_tokenizer,
+            ExitStack() as exit_stack,
         ):
             assert isinstance(t5_text_encoder, T5EncoderModel)
             assert isinstance(t5_tokenizer, (T5Tokenizer, T5TokenizerFast))
+
+            # Determine if the model is quantized.
+            # If the model is quantized, then we need to apply the LoRA weights as sidecar layers. This results in
+            # slower inference than direct patching, but is agnostic to the quantization format.
+            if t5_encoder_config.format in [ModelFormat.T5Encoder, ModelFormat.Diffusers]:
+                model_is_quantized = False
+            elif t5_encoder_config.format in [
+                ModelFormat.BnbQuantizedLlmInt8b,
+                ModelFormat.BnbQuantizednf4b,
+                ModelFormat.GGUFQuantized,
+            ]:
+                model_is_quantized = True
+            else:
+                raise ValueError(f"Unsupported model format: {t5_encoder_config.format}")
+
+            # Apply LoRA models to the T5 encoder.
+            # Note: We apply the LoRA after the encoder has been moved to its target device for faster patching.
+            exit_stack.enter_context(
+                LayerPatcher.apply_smart_model_patches(
+                    model=t5_text_encoder,
+                    patches=self._t5_lora_iterator(context),
+                    prefix=FLUX_LORA_T5_PREFIX,
+                    dtype=t5_text_encoder.dtype,
+                    cached_weights=cached_weights,
+                    force_sidecar_patching=model_is_quantized,
+                )
+            )
 
             t5_encoder = HFEncoder(t5_text_encoder, t5_tokenizer, False, self.t5_max_seq_len)
 
@@ -128,6 +159,13 @@ class FluxTextEncoderInvocation(BaseInvocation):
 
     def _clip_lora_iterator(self, context: InvocationContext) -> Iterator[Tuple[ModelPatchRaw, float]]:
         for lora in self.clip.loras:
+            lora_info = context.models.load(lora.lora)
+            assert isinstance(lora_info.model, ModelPatchRaw)
+            yield (lora_info.model, lora.weight)
+            del lora_info
+
+    def _t5_lora_iterator(self, context: InvocationContext) -> Iterator[Tuple[ModelPatchRaw, float]]:
+        for lora in self.t5_encoder.loras:
             lora_info = context.models.load(lora.lora)
             assert isinstance(lora_info.model, ModelPatchRaw)
             yield (lora_info.model, lora.weight)

@@ -72,6 +72,7 @@ class InvokeAIAppConfig(BaseSettings):
         outputs_dir: Path to directory for outputs.
         custom_nodes_dir: Path to directory for custom nodes.
         style_presets_dir: Path to directory for style presets.
+        workflow_thumbnails_dir: Path to directory for workflow thumbnails.
         log_handlers: Log handler. Valid options are "console", "file=<path>", "syslog=path|address:host:port", "http=<url>".
         log_format: Log format. Use "plain" for text-only, "color" for colorized output, "legacy" for 2.3-style logging and "syslog" for syslog-style.<br>Valid values: `plain`, `color`, `syslog`, `legacy`
         log_level: Emit logging messages at this level or higher.<br>Valid values: `debug`, `info`, `warning`, `error`, `critical`
@@ -91,6 +92,7 @@ class InvokeAIAppConfig(BaseSettings):
         ram: DEPRECATED: This setting is no longer used. It has been replaced by `max_cache_ram_gb`, but most users will not need to use this config since automatic cache size limits should work well in most cases. This config setting will be removed once the new model cache behavior is stable.
         vram: DEPRECATED: This setting is no longer used. It has been replaced by `max_cache_vram_gb`, but most users will not need to use this config since automatic cache size limits should work well in most cases. This config setting will be removed once the new model cache behavior is stable.
         lazy_offload: DEPRECATED: This setting is no longer used. Lazy-offloading is enabled by default. This config setting will be removed once the new model cache behavior is stable.
+        pytorch_cuda_alloc_conf: Configure the Torch CUDA memory allocator. This will impact peak reserved VRAM usage and performance. Setting to "backend:cudaMallocAsync" works well on many systems. The optimal configuration is highly dependent on the system configuration (device type, VRAM, CUDA driver version, etc.), so must be tuned experimentally.
         device: Preferred execution device. `auto` will choose the device depending on the hardware platform and the installed torch capabilities.<br>Valid values: `auto`, `cpu`, `cuda`, `cuda:1`, `mps`
         precision: Floating point precision. `float16` will consume half the memory of `float32` but produce slightly lower-quality images. The `auto` setting will guess the proper precision based on your video card and operating system.<br>Valid values: `auto`, `float16`, `bfloat16`, `float32`
         sequential_guidance: Whether to calculate guidance in serial instead of in parallel, lowering memory requirements.
@@ -141,6 +143,7 @@ class InvokeAIAppConfig(BaseSettings):
     outputs_dir:                   Path = Field(default=Path("outputs"),    description="Path to directory for outputs.")
     custom_nodes_dir:              Path = Field(default=Path("nodes"),      description="Path to directory for custom nodes.")
     style_presets_dir:      Path = Field(default=Path("style_presets"),      description="Path to directory for style presets.")
+    workflow_thumbnails_dir: Path = Field(default=Path("workflow_thumbnails"), description="Path to directory for workflow thumbnails.")
 
     # LOGGING
     log_handlers:             list[str] = Field(default=["console"],        description='Log handler. Valid options are "console", "file=<path>", "syslog=path|address:host:port", "http=<url>".')
@@ -168,6 +171,9 @@ class InvokeAIAppConfig(BaseSettings):
     ram:                Optional[float] = Field(default=None, gt=0,         description="DEPRECATED: This setting is no longer used. It has been replaced by `max_cache_ram_gb`, but most users will not need to use this config since automatic cache size limits should work well in most cases. This config setting will be removed once the new model cache behavior is stable.")
     vram:               Optional[float] = Field(default=None, ge=0,         description="DEPRECATED: This setting is no longer used. It has been replaced by `max_cache_vram_gb`, but most users will not need to use this config since automatic cache size limits should work well in most cases. This config setting will be removed once the new model cache behavior is stable.")
     lazy_offload:                  bool = Field(default=True,               description="DEPRECATED: This setting is no longer used. Lazy-offloading is enabled by default. This config setting will be removed once the new model cache behavior is stable.")
+
+    # PyTorch Memory Allocator
+    pytorch_cuda_alloc_conf: Optional[str] = Field(default=None,            description="Configure the Torch CUDA memory allocator. This will impact peak reserved VRAM usage and performance. Setting to \"backend:cudaMallocAsync\" works well on many systems. The optimal configuration is highly dependent on the system configuration (device type, VRAM, CUDA driver version, etc.), so must be tuned experimentally.")
 
     # DEVICE
     device:                      DEVICE = Field(default="auto",             description="Preferred execution device. `auto` will choose the device depending on the hardware platform and the installed torch capabilities.")
@@ -299,6 +305,11 @@ class InvokeAIAppConfig(BaseSettings):
     def style_presets_path(self) -> Path:
         """Path to the style presets directory, resolved to an absolute path.."""
         return self._resolve(self.style_presets_dir)
+
+    @property
+    def workflow_thumbnails_path(self) -> Path:
+        """Path to the workflow thumbnails directory, resolved to an absolute path.."""
+        return self._resolve(self.workflow_thumbnails_dir)
 
     @property
     def convert_cache_path(self) -> Path:
@@ -472,9 +483,9 @@ def load_and_migrate_config(config_path: Path) -> InvokeAIAppConfig:
     try:
         # Meta is not included in the model fields, so we need to validate it separately
         config = InvokeAIAppConfig.model_validate(loaded_config_dict)
-        assert (
-            config.schema_version == CONFIG_SCHEMA_VERSION
-        ), f"Invalid schema version, expected {CONFIG_SCHEMA_VERSION}: {config.schema_version}"
+        assert config.schema_version == CONFIG_SCHEMA_VERSION, (
+            f"Invalid schema version, expected {CONFIG_SCHEMA_VERSION}: {config.schema_version}"
+        )
         return config
     except Exception as e:
         raise RuntimeError(f"Failed to load config file {config_path}: {e}") from e

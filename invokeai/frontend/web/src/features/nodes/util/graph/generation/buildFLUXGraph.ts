@@ -5,8 +5,9 @@ import { getPrefixedId } from 'features/controlLayers/konva/util';
 import { selectCanvasSettingsSlice } from 'features/controlLayers/store/canvasSettingsSlice';
 import { selectParamsSlice } from 'features/controlLayers/store/paramsSlice';
 import { selectCanvasMetadata, selectCanvasSlice } from 'features/controlLayers/store/selectors';
-import { fetchModelConfigWithTypeGuard } from 'features/metadata/util/modelFetchingHelpers';
+import { addFLUXFill } from 'features/nodes/util/graph/generation/addFLUXFill';
 import { addFLUXLoRAs } from 'features/nodes/util/graph/generation/addFLUXLoRAs';
+import { addFLUXReduxes } from 'features/nodes/util/graph/generation/addFLUXRedux';
 import { addImageToImage } from 'features/nodes/util/graph/generation/addImageToImage';
 import { addInpaint } from 'features/nodes/util/graph/generation/addInpaint';
 import { addNSFWChecker } from 'features/nodes/util/graph/generation/addNSFWChecker';
@@ -21,8 +22,9 @@ import {
   getPresetModifiedPrompts,
   getSizes,
 } from 'features/nodes/util/graph/graphBuilderUtils';
+import { t } from 'i18next';
+import { selectMainModelConfig } from 'services/api/endpoints/models';
 import type { Invocation } from 'services/api/types';
-import { isNonRefinerMainModelConfig } from 'services/api/types';
 import type { Equals } from 'tsafe';
 import { assert } from 'tsafe';
 
@@ -46,9 +48,10 @@ export const buildFLUXGraph = async (
 
   const { originalSize, scaledSize } = getSizes(bbox);
 
+  const model = selectMainModelConfig(state);
+
   const {
-    model,
-    guidance,
+    guidance: baseGuidance,
     seed,
     steps,
     fluxVAE,
@@ -59,9 +62,33 @@ export const buildFLUXGraph = async (
   } = params;
 
   assert(model, 'No model found in state');
+  assert(model.base === 'flux', 'Model is not a FLUX model');
   assert(t5EncoderModel, 'No T5 Encoder model found in state');
   assert(clipEmbedModel, 'No CLIP Embed model found in state');
   assert(fluxVAE, 'No FLUX VAE model found in state');
+
+  const isFLUXFill = model.variant === 'inpaint';
+  let guidance = baseGuidance;
+  if (isFLUXFill) {
+    // FLUX Fill doesn't work with Text to Image or Image to Image generation modes. Well, technically, it does, but
+    // the outputs are garbagio.
+    //
+    // Unfortunately, we do not know the generation mode until the user clicks Invoke, so this is the first place we
+    // can check for this incompatibility.
+    //
+    // We are opting to fail loudly instead of produce garbage images, hence this being an assert.
+    //
+    // The message in this assert will be shown in a toast to the user, so we are using the translation system for it.
+    //
+    // The other asserts above are just for sanity & type check and should never be hit, so they do not have
+    // translations.
+    assert(generationMode === 'inpaint' || generationMode === 'outpaint', t('toast.fluxFillIncompatibleWithT2IAndI2I'));
+
+    // FLUX Fill wants much higher guidance values than normal FLUX - silently "fix" the value for the user.
+    // TODO(psyche): Figure out a way to alert the user that this is happening - maybe return warnings from the graph
+    // builder and toast them?
+    guidance = 30;
+  }
 
   const { positivePrompt } = getPresetModifiedPrompts(state);
 
@@ -114,16 +141,13 @@ export const buildFLUXGraph = async (
 
   addFLUXLoRAs(state, g, denoise, modelLoader, posCond);
 
-  const modelConfig = await fetchModelConfigWithTypeGuard(model.key, isNonRefinerMainModelConfig);
-  assert(modelConfig.base === 'flux');
-
   g.upsertMetadata({
     generation_mode: 'flux_txt2img',
     guidance,
     width: originalSize.width,
     height: originalSize.height,
     positive_prompt: positivePrompt,
-    model: Graph.getModelMetadataField(modelConfig),
+    model: Graph.getModelMetadataField(model),
     seed,
     steps,
     vae: fluxVAE,
@@ -142,10 +166,27 @@ export const buildFLUXGraph = async (
   }
 
   let canvasOutput: Invocation<
-    'l2i' | 'img_nsfw' | 'img_watermark' | 'img_resize' | 'canvas_v2_mask_and_crop' | 'flux_vae_decode' | 'sd3_l2i'
+    | 'l2i'
+    | 'img_nsfw'
+    | 'img_watermark'
+    | 'img_resize'
+    | 'invokeai_img_blend'
+    | 'apply_mask_to_image'
+    | 'flux_vae_decode'
+    | 'sd3_l2i'
   > = l2i;
 
-  if (generationMode === 'txt2img') {
+  if (isFLUXFill) {
+    canvasOutput = await addFLUXFill({
+      state,
+      g,
+      manager,
+      l2i,
+      denoise,
+      originalSize,
+      scaledSize,
+    });
+  } else if (generationMode === 'txt2img') {
     canvasOutput = addTextToImage({ g, l2i, originalSize, scaledSize });
   } else if (generationMode === 'img2img') {
     canvasOutput = await addImageToImage({
@@ -205,7 +246,7 @@ export const buildFLUXGraph = async (
     g,
     rect: canvas.bbox.rect,
     collector: controlNetCollector,
-    model: modelConfig,
+    model,
   });
   if (controlNetResult.addedControlNets > 0) {
     g.addEdge(controlNetCollector, 'collection', denoise, 'control');
@@ -219,7 +260,7 @@ export const buildFLUXGraph = async (
     g,
     rect: canvas.bbox.rect,
     denoise,
-    model: modelConfig,
+    model,
   });
 
   const ipAdapterCollect = g.addNode({
@@ -230,7 +271,18 @@ export const buildFLUXGraph = async (
     entities: canvas.referenceImages.entities,
     g,
     collector: ipAdapterCollect,
-    model: modelConfig,
+    model,
+  });
+
+  const fluxReduxCollect = g.addNode({
+    type: 'collect',
+    id: getPrefixedId('ip_adapter_collector'),
+  });
+  const fluxReduxResult = addFLUXReduxes({
+    entities: canvas.referenceImages.entities,
+    g,
+    collector: fluxReduxCollect,
+    model,
   });
 
   const regionsResult = await addRegions({
@@ -238,12 +290,13 @@ export const buildFLUXGraph = async (
     regions: canvas.regionalGuidance.entities,
     g,
     bbox: canvas.bbox.rect,
-    model: modelConfig,
+    model,
     posCond,
     negCond: null,
     posCondCollect,
     negCondCollect: null,
     ipAdapterCollect,
+    fluxReduxCollect,
   });
 
   const totalIPAdaptersAdded =
@@ -253,6 +306,16 @@ export const buildFLUXGraph = async (
   } else {
     g.deleteNode(ipAdapterCollect.id);
   }
+
+  const totalReduxesAdded =
+    fluxReduxResult.addedFLUXReduxes + regionsResult.reduce((acc, r) => acc + r.addedFLUXReduxes, 0);
+  if (totalReduxesAdded > 0) {
+    g.addEdge(fluxReduxCollect, 'collection', denoise, 'redux_conditioning');
+  } else {
+    g.deleteNode(fluxReduxCollect.id);
+  }
+
+  // TODO: Add FLUX Reduxes to denoise node like we do for ipa
 
   if (state.system.shouldUseNSFWChecker) {
     canvasOutput = addNSFWChecker(g, canvasOutput);

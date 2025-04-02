@@ -6,7 +6,7 @@ from invokeai.app.invocations.constants import LATENT_SCALE_FACTOR
 from invokeai.app.invocations.fields import FieldDescriptions, InputField, OutputField
 from invokeai.app.invocations.model import UNetField
 from invokeai.app.services.shared.invocation_context import InvocationContext
-from invokeai.backend.model_manager.config import BaseModelType
+from invokeai.backend.model_manager.taxonomy import BaseModelType
 
 
 @invocation_output("ideal_size_output")
@@ -19,9 +19,9 @@ class IdealSizeOutput(BaseInvocationOutput):
 
 @invocation(
     "ideal_size",
-    title="Ideal Size",
+    title="Ideal Size - SD1.5, SDXL",
     tags=["latents", "math", "ideal_size"],
-    version="1.0.3",
+    version="1.0.5",
 )
 class IdealSizeInvocation(BaseInvocation):
     """Calculates the ideal size for generation to avoid duplication"""
@@ -41,11 +41,16 @@ class IdealSizeInvocation(BaseInvocation):
     def invoke(self, context: InvocationContext) -> IdealSizeOutput:
         unet_config = context.models.get_config(self.unet.unet.key)
         aspect = self.width / self.height
-        dimension: float = 512
-        if unet_config.base == BaseModelType.StableDiffusion2:
+
+        if unet_config.base == BaseModelType.StableDiffusion1:
+            dimension = 512
+        elif unet_config.base == BaseModelType.StableDiffusion2:
             dimension = 768
-        elif unet_config.base == BaseModelType.StableDiffusionXL:
+        elif unet_config.base in (BaseModelType.StableDiffusionXL, BaseModelType.Flux, BaseModelType.StableDiffusion3):
             dimension = 1024
+        else:
+            raise ValueError(f"Unsupported model type: {unet_config.base}")
+
         dimension = dimension * self.multiplier
         min_dimension = math.floor(dimension * 0.5)
         model_area = dimension * dimension  # hardcoded for now since all models are trained on square images

@@ -10,20 +10,21 @@ import { addImagesToNodeImageFieldCollectionDndTarget } from 'features/dnd/dnd';
 import { DndDropTarget } from 'features/dnd/DndDropTarget';
 import { DndImage } from 'features/dnd/DndImage';
 import { DndImageIcon } from 'features/dnd/DndImageIcon';
-import { useFieldIsInvalid } from 'features/nodes/hooks/useFieldIsInvalid';
+import { useInputFieldIsInvalid } from 'features/nodes/hooks/useInputFieldIsInvalid';
 import { fieldImageCollectionValueChanged } from 'features/nodes/store/nodesSlice';
 import type { ImageField } from 'features/nodes/types/common';
+import { NO_DRAG_CLASS, NO_WHEEL_CLASS } from 'features/nodes/types/constants';
 import type { ImageFieldCollectionInputInstance, ImageFieldCollectionInputTemplate } from 'features/nodes/types/field';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PiArrowCounterClockwiseBold, PiExclamationMarkBold } from 'react-icons/pi';
+import { PiExclamationMarkBold, PiXBold } from 'react-icons/pi';
 import { useGetImageDTOQuery } from 'services/api/endpoints/images';
 import type { ImageDTO } from 'services/api/types';
 
 import type { FieldComponentProps } from './types';
 
-const overlayscrollbarsOptions = getOverlayScrollbarsParams().options;
+const overlayscrollbarsOptions = getOverlayScrollbarsParams({}).options;
 
 const sx = {
   borderWidth: 1,
@@ -39,7 +40,7 @@ export const ImageFieldCollectionInputComponent = memo(
     const { nodeId, field } = props;
     const store = useAppStore();
 
-    const isInvalid = useFieldIsInvalid(nodeId, field.name);
+    const isInvalid = useInputFieldIsInvalid(nodeId, field.name);
 
     const dndTargetData = useMemo<AddImagesToNodeImageFieldCollection>(
       () =>
@@ -71,7 +72,7 @@ export const ImageFieldCollectionInputComponent = memo(
 
     return (
       <Flex
-        className="nodrag"
+        className={NO_DRAG_CLASS}
         position="relative"
         w="full"
         h="full"
@@ -81,26 +82,19 @@ export const ImageFieldCollectionInputComponent = memo(
         justifyContent="center"
       >
         {(!field.value || field.value.length === 0) && (
-          <UploadMultipleImageButton
-            w="full"
-            h="auto"
-            isError={isInvalid}
-            onUpload={onUpload}
-            fontSize={24}
-            variant="ghost"
-          />
+          <UploadMultipleImageButton w="full" h="auto" isError={isInvalid} onUpload={onUpload} fontSize={24} />
         )}
         {field.value && field.value.length > 0 && (
           <Box w="full" h="auto" p={1} sx={sx} data-error={isInvalid} borderRadius="base">
             <OverlayScrollbarsComponent
-              className="nowheel"
+              className={NO_WHEEL_CLASS}
               defer
               style={overlayScrollbarsStyles}
               options={overlayscrollbarsOptions}
             >
               <Grid w="full" h="full" templateColumns="repeat(4, 1fr)" gap={1}>
                 {field.value.map((value, index) => (
-                  <GridItem key={index} position="relative" className="nodrag">
+                  <GridItem key={index} position="relative" className={NO_DRAG_CLASS}>
                     <ImageGridItemContent value={value} index={index} onRemoveImage={onRemoveImage} />
                   </GridItem>
                 ))}
@@ -132,7 +126,21 @@ const ImageGridItemContent = memo(
     }
 
     if (!query.data) {
-      return <IAINoContentFallback icon={<PiExclamationMarkBold />} />;
+      return (
+        <>
+          <IAINoContentFallback icon={PiExclamationMarkBold} />
+          <DndImageIcon
+            onClick={onClickRemove}
+            icon={<PiXBold />}
+            tooltip="Remove Image from Collection"
+            position="absolute"
+            flexDir="column"
+            top={1}
+            insetInlineEnd={1}
+            gap={1}
+          />
+        </>
+      );
     }
 
     return (
@@ -149,8 +157,8 @@ const ImageGridItemContent = memo(
         />
         <DndImageIcon
           onClick={onClickRemove}
-          icon={<PiArrowCounterClockwiseBold />}
-          tooltip="Reset Image"
+          icon={<PiXBold />}
+          tooltip="Remove Image from Collection"
           position="absolute"
           flexDir="column"
           top={1}

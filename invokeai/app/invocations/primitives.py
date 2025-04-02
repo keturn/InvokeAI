@@ -265,13 +265,9 @@ class ImageInvocation(BaseInvocation):
     image: ImageField = InputField(description="The image to load")
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
-        image = context.images.get_pil(self.image.image_name)
+        image_dto = context.images.get_dto(self.image.image_name)
 
-        return ImageOutput(
-            image=ImageField(image_name=self.image.image_name),
-            width=image.width,
-            height=image.height,
-        )
+        return ImageOutput.build(image_dto=image_dto)
 
 
 @invocation(
@@ -416,6 +412,7 @@ class ColorInvocation(BaseInvocation):
 class MaskOutput(BaseInvocationOutput):
     """A torch mask tensor."""
 
+    # shape: [1, H, W], dtype: bool
     mask: TensorField = OutputField(description="The mask.")
     width: int = OutputField(description="The width of the mask in pixels.")
     height: int = OutputField(description="The height of the mask in pixels.")

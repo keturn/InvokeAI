@@ -2,7 +2,7 @@ import einops
 import torch
 from diffusers.models.autoencoders.autoencoder_kl import AutoencoderKL
 
-from invokeai.app.invocations.baseinvocation import BaseInvocation, Classification, invocation
+from invokeai.app.invocations.baseinvocation import BaseInvocation, invocation
 from invokeai.app.invocations.fields import (
     FieldDescriptions,
     ImageField,
@@ -21,11 +21,10 @@ from invokeai.backend.util.devices import TorchDevice
 
 @invocation(
     "sd3_i2l",
-    title="SD3 Image to Latents",
+    title="Image to Latents - SD3",
     tags=["image", "latents", "vae", "i2l", "sd3"],
     category="image",
-    version="1.0.0",
-    classification=Classification.Prototype,
+    version="1.0.1",
 )
 class SD3ImageToLatentsInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Generates latents from an image."""

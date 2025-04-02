@@ -12,25 +12,27 @@ import {
   Text,
 } from '@invoke-ai/ui-library';
 import { useStore } from '@nanostores/react';
+import type { EdgeChange, NodeChange } from '@xyflow/react';
 import { useAppSelector, useAppStore } from 'app/store/storeHooks';
 import { CommandEmpty, CommandItem, CommandList, CommandRoot } from 'cmdk';
 import { IAINoContentFallback } from 'common/components/IAIImageFallback';
 import ScrollableContent from 'common/components/OverlayScrollbars/ScrollableContent';
 import { useBuildNode } from 'features/nodes/hooks/useBuildNode';
 import {
+  $addNodeCmdk,
   $cursorPos,
   $edgePendingUpdate,
   $pendingConnection,
   $templates,
   edgesChanged,
   nodesChanged,
-  useAddNodeCmdk,
 } from 'features/nodes/store/nodesSlice';
 import { selectNodesSlice } from 'features/nodes/store/selectors';
 import { findUnoccupiedPosition } from 'features/nodes/store/util/findUnoccupiedPosition';
 import { getFirstValidConnection } from 'features/nodes/store/util/getFirstValidConnection';
 import { connectionToEdge } from 'features/nodes/store/util/reactFlowUtil';
 import { validateConnectionTypes } from 'features/nodes/store/util/validateConnectionTypes';
+import type { AnyEdge, AnyNode } from 'features/nodes/types/invocation';
 import { isInvocationNode } from 'features/nodes/types/invocation';
 import { useRegisteredHotkeys } from 'features/system/components/HotkeysModal/useHotkeyData';
 import { toast } from 'features/toast/toast';
@@ -38,34 +40,12 @@ import { selectActiveTab } from 'features/ui/store/uiSelectors';
 import { memoize } from 'lodash-es';
 import { computed } from 'nanostores';
 import type { ChangeEvent } from 'react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PiCircuitryBold, PiFlaskBold, PiHammerBold, PiLightningFill } from 'react-icons/pi';
-import type { EdgeChange, NodeChange } from 'reactflow';
 import type { S } from 'services/api/types';
-
-const useThrottle = <T,>(value: T, limit: number) => {
-  const [throttledValue, setThrottledValue] = useState(value);
-  const lastRan = useRef(Date.now());
-
-  useEffect(() => {
-    const handler = setTimeout(
-      function () {
-        if (Date.now() - lastRan.current >= limit) {
-          setThrottledValue(value);
-          lastRan.current = Date.now();
-        }
-      },
-      limit - (Date.now() - lastRan.current)
-    );
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, limit]);
-
-  return throttledValue;
-};
+import { objectEntries } from 'tsafe';
+import { useDebounce } from 'use-debounce';
 
 const useAddNode = () => {
   const { t } = useTranslation();
@@ -95,8 +75,8 @@ const useAddNode = () => {
       node.selected = true;
 
       // Deselect all other nodes and edges
-      const nodeChanges: NodeChange[] = [{ type: 'add', item: node }];
-      const edgeChanges: EdgeChange[] = [];
+      const nodeChanges: NodeChange<AnyNode>[] = [{ type: 'add', item: node }];
+      const edgeChanges: EdgeChange<AnyEdge>[] = [];
       nodes.forEach(({ id, selected }) => {
         if (selected) {
           nodeChanges.push({ type: 'select', id, selected: false });
@@ -162,19 +142,26 @@ const cmdkRootSx: SystemStyleObject = {
 
 export const AddNodeCmdk = memo(() => {
   const { t } = useTranslation();
-  const addNodeCmdk = useAddNodeCmdk();
   const inputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const addNode = useAddNode();
   const tab = useAppSelector(selectActiveTab);
-  const throttledSearchTerm = useThrottle(searchTerm, 100);
+  // Filtering the list is expensive - debounce the search term to avoid stutters
+  const [debouncedSearchTerm] = useDebounce(searchTerm, 300);
+  const isOpen = useStore($addNodeCmdk);
+  const open = useCallback(() => {
+    $addNodeCmdk.set(true);
+  }, []);
+  const close = useCallback(() => {
+    $addNodeCmdk.set(false);
+  }, []);
 
   useRegisteredHotkeys({
     id: 'addNode',
     category: 'workflows',
-    callback: addNodeCmdk.setTrue,
+    callback: open,
     options: { enabled: tab === 'workflows', preventDefault: true },
-    dependencies: [addNodeCmdk.setTrue, tab],
+    dependencies: [open, tab],
   });
 
   const onChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -182,10 +169,10 @@ export const AddNodeCmdk = memo(() => {
   }, []);
 
   const onClose = useCallback(() => {
-    addNodeCmdk.setFalse();
+    close();
     setSearchTerm('');
     $pendingConnection.set(null);
-  }, [addNodeCmdk]);
+  }, [close]);
 
   const onSelect = useCallback(
     (value: string) => {
@@ -196,14 +183,7 @@ export const AddNodeCmdk = memo(() => {
   );
 
   return (
-    <Modal
-      isOpen={addNodeCmdk.isTrue}
-      onClose={onClose}
-      useInert={false}
-      initialFocusRef={inputRef}
-      size="xl"
-      isCentered
-    >
+    <Modal isOpen={isOpen} onClose={onClose} useInert={false} initialFocusRef={inputRef} size="xl" isCentered>
       <ModalOverlay />
       <ModalContent h="512" maxH="70%">
         <ModalBody p={2} h="full" sx={cmdkRootSx}>
@@ -224,7 +204,7 @@ export const AddNodeCmdk = memo(() => {
                     />
                   </CommandEmpty>
                   <CommandList>
-                    <NodeCommandList searchTerm={throttledSearchTerm} onSelect={onSelect} />
+                    <NodeCommandList searchTerm={debouncedSearchTerm} onSelect={onSelect} />
                   </CommandList>
                 </ScrollableContent>
               </Box>
@@ -381,11 +361,11 @@ const NodeCommandList = memo(({ searchTerm, onSelect }: { searchTerm: string; on
         if (filter(template, searchTerm)) {
           const candidateFields = pendingConnection.handleType === 'source' ? template.inputs : template.outputs;
 
-          for (const field of Object.values(candidateFields)) {
+          for (const [_fieldName, fieldTemplate] of objectEntries(candidateFields)) {
             const sourceType =
-              pendingConnection.handleType === 'source' ? field.type : pendingConnection.fieldTemplate.type;
+              pendingConnection.handleType === 'source' ? pendingConnection.fieldTemplate.type : fieldTemplate.type;
             const targetType =
-              pendingConnection.handleType === 'target' ? field.type : pendingConnection.fieldTemplate.type;
+              pendingConnection.handleType === 'target' ? pendingConnection.fieldTemplate.type : fieldTemplate.type;
 
             if (validateConnectionTypes(sourceType, targetType)) {
               _items.push({

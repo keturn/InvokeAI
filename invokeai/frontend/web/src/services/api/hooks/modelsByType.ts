@@ -15,14 +15,17 @@ import {
   isControlLoRAModelConfig,
   isControlNetModelConfig,
   isFluxMainModelModelConfig,
+  isFluxReduxModelConfig,
   isFluxVAEModelConfig,
   isIPAdapterModelConfig,
+  isLLaVAModelConfig,
   isLoRAModelConfig,
   isNonRefinerMainModelConfig,
   isNonSDXLMainModelConfig,
   isRefinerMainModelModelConfig,
   isSD3MainModelModelConfig,
   isSDXLMainModelModelConfig,
+  isSigLipModelConfig,
   isSpandrelImageToImageModelConfig,
   isT2IAdapterModelConfig,
   isT5EncoderModelConfig,
@@ -37,7 +40,7 @@ const buildModelsHook =
     typeGuard: (config: AnyModelConfig, excludeSubmodels?: boolean) => config is T,
     excludeSubmodels?: boolean
   ) =>
-  () => {
+  (filter: (config: T) => boolean = () => true) => {
     const result = useGetModelConfigsQuery(undefined);
     const modelConfigs = useMemo(() => {
       if (!result.data) {
@@ -46,8 +49,9 @@ const buildModelsHook =
 
       return modelConfigsAdapterSelectors
         .selectAll(result.data)
-        .filter((config) => typeGuard(config, excludeSubmodels));
-    }, [result]);
+        .filter((config) => typeGuard(config, excludeSubmodels))
+        .filter(filter);
+    }, [filter, result.data]);
 
     return [modelConfigs, result] as const;
   };
@@ -74,6 +78,12 @@ export const useVAEModels = (args?: ModelHookArgs) => buildModelsHook(isVAEModel
 export const useFluxVAEModels = (args?: ModelHookArgs) =>
   buildModelsHook(isFluxVAEModelConfig, args?.excludeSubmodels)();
 export const useCLIPVisionModels = buildModelsHook(isCLIPVisionModelConfig);
+export const useSigLipModels = buildModelsHook(isSigLipModelConfig);
+export const useFluxReduxModels = buildModelsHook(isFluxReduxModelConfig);
+export const useIPAdapterOrFLUXReduxModels = buildModelsHook(
+  (config) => isIPAdapterModelConfig(config) || isFluxReduxModelConfig(config)
+);
+export const useLLaVAModels = buildModelsHook(isLLaVAModelConfig);
 
 // const buildModelsSelector =
 //   <T extends AnyModelConfig>(typeGuard: (config: AnyModelConfig) => config is T): Selector<RootState, T[]> =>

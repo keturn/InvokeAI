@@ -10,12 +10,14 @@ from invokeai.app.services.session_queue.session_queue_common import (
     QUEUE_ITEM_STATUS,
     BatchStatus,
     EnqueueBatchResult,
+    RetryItemsResult,
     SessionQueueItem,
     SessionQueueStatus,
 )
 from invokeai.app.services.shared.graph import AnyInvocation, AnyInvocationOutput
 from invokeai.app.util.misc import get_timestamp
-from invokeai.backend.model_manager.config import AnyModelConfig, SubModelType
+from invokeai.backend.model_manager import SubModelType
+from invokeai.backend.model_manager.config import AnyModelConfig
 
 if TYPE_CHECKING:
     from invokeai.app.services.download.download_base import DownloadJob
@@ -287,6 +289,22 @@ class BatchEnqueuedEvent(QueueEventBase):
             enqueued=enqueue_result.enqueued,
             requested=enqueue_result.requested,
             priority=enqueue_result.priority,
+        )
+
+
+@payload_schema.register
+class QueueItemsRetriedEvent(QueueEventBase):
+    """Event model for queue_items_retried"""
+
+    __event_name__ = "queue_items_retried"
+
+    retried_item_ids: list[int] = Field(description="The IDs of the queue items that were retried")
+
+    @classmethod
+    def build(cls, retry_result: RetryItemsResult) -> "QueueItemsRetriedEvent":
+        return cls(
+            queue_id=retry_result.queue_id,
+            retried_item_ids=retry_result.retried_item_ids,
         )
 
 

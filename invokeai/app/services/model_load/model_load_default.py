@@ -11,7 +11,7 @@ from torch import load as torch_load
 from invokeai.app.services.config import InvokeAIAppConfig
 from invokeai.app.services.invoker import Invoker
 from invokeai.app.services.model_load.model_load_base import ModelLoadServiceBase
-from invokeai.backend.model_manager import AnyModel, AnyModelConfig, SubModelType
+from invokeai.backend.model_manager.config import AnyModelConfig
 from invokeai.backend.model_manager.load import (
     LoadedModel,
     LoadedModelWithoutConfig,
@@ -20,6 +20,7 @@ from invokeai.backend.model_manager.load import (
 )
 from invokeai.backend.model_manager.load.model_cache.model_cache import ModelCache
 from invokeai.backend.model_manager.load.model_loaders.generic_diffusers import GenericDiffusersLoader
+from invokeai.backend.model_manager.taxonomy import AnyModel, SubModelType
 from invokeai.backend.util.devices import TorchDevice
 from invokeai.backend.util.logging import InvokeAILogger
 
@@ -85,8 +86,11 @@ class ModelLoadService(ModelLoadServiceBase):
 
         def torch_load_file(checkpoint: Path) -> AnyModel:
             scan_result = scan_file_path(checkpoint)
-            if scan_result.infected_files != 0 or scan_result.scan_err:
-                raise Exception("The model at {checkpoint} is potentially infected by malware. Aborting load.")
+            if scan_result.infected_files != 0:
+                raise Exception(f"The model at {checkpoint} is potentially infected by malware. Aborting load.")
+            if scan_result.scan_err:
+                raise Exception(f"Error scanning model at {checkpoint} for malware. Aborting load.")
+
             result = torch_load(checkpoint, map_location="cpu")
             return result
 

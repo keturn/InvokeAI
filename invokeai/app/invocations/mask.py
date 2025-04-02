@@ -2,9 +2,21 @@ import numpy as np
 import torch
 from PIL import Image
 
-from invokeai.app.invocations.baseinvocation import BaseInvocation, Classification, InvocationContext, invocation
-from invokeai.app.invocations.fields import ImageField, InputField, TensorField, WithBoard, WithMetadata
-from invokeai.app.invocations.primitives import ImageOutput, MaskOutput
+from invokeai.app.invocations.baseinvocation import (
+    BaseInvocation,
+    InvocationContext,
+    invocation,
+)
+from invokeai.app.invocations.fields import (
+    BoundingBoxField,
+    ColorField,
+    ImageField,
+    InputField,
+    TensorField,
+    WithBoard,
+    WithMetadata,
+)
+from invokeai.app.invocations.primitives import BoundingBoxOutput, ImageOutput, MaskOutput
 from invokeai.backend.image_util.util import pil_to_np
 
 
@@ -45,7 +57,6 @@ class RectangleMaskInvocation(BaseInvocation, WithMetadata):
     tags=["conditioning"],
     category="conditioning",
     version="1.0.0",
-    classification=Classification.Beta,
 )
 class AlphaMaskToTensorInvocation(BaseInvocation):
     """Convert a mask image to a tensor. Opaque regions are 1 and transparent regions are 0."""
@@ -54,7 +65,7 @@ class AlphaMaskToTensorInvocation(BaseInvocation):
     invert: bool = InputField(default=False, description="Whether to invert the mask.")
 
     def invoke(self, context: InvocationContext) -> MaskOutput:
-        image = context.images.get_pil(self.image.image_name)
+        image = context.images.get_pil(self.image.image_name, mode="RGBA")
         mask = torch.zeros((1, image.height, image.width), dtype=torch.bool)
         if self.invert:
             mask[0] = torch.tensor(np.array(image)[:, :, 3] == 0, dtype=torch.bool)
@@ -73,8 +84,7 @@ class AlphaMaskToTensorInvocation(BaseInvocation):
     title="Invert Tensor Mask",
     tags=["conditioning"],
     category="conditioning",
-    version="1.0.0",
-    classification=Classification.Beta,
+    version="1.1.0",
 )
 class InvertTensorMaskInvocation(BaseInvocation):
     """Inverts a tensor mask."""
@@ -83,6 +93,15 @@ class InvertTensorMaskInvocation(BaseInvocation):
 
     def invoke(self, context: InvocationContext) -> MaskOutput:
         mask = context.tensors.load(self.mask.tensor_name)
+
+        # Verify dtype and shape.
+        assert mask.dtype == torch.bool
+        assert mask.dim() in [2, 3]
+
+        # Unsqueeze the channel dimension if it is missing. The MaskOutput type expects a single channel.
+        if mask.dim() == 2:
+            mask = mask.unsqueeze(0)
+
         inverted = ~mask
 
         return MaskOutput(
@@ -201,3 +220,47 @@ class ApplyMaskTensorToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
         image_dto = context.images.save(image=masked_image)
 
         return ImageOutput.build(image_dto)
+
+
+WHITE = ColorField(r=255, g=255, b=255, a=255)
+
+
+@invocation(
+    "get_image_mask_bounding_box",
+    title="Get Image Mask Bounding Box",
+    tags=["mask"],
+    category="mask",
+    version="1.0.0",
+)
+class GetMaskBoundingBoxInvocation(BaseInvocation):
+    """Gets the bounding box of the given mask image."""
+
+    mask: ImageField = InputField(description="The mask to crop.")
+    margin: int = InputField(default=0, description="Margin to add to the bounding box.")
+    mask_color: ColorField = InputField(default=WHITE, description="Color of the mask in the image.")
+
+    def invoke(self, context: InvocationContext) -> BoundingBoxOutput:
+        mask = context.images.get_pil(self.mask.image_name, mode="RGBA")
+        mask_np = np.array(mask)
+
+        # Convert mask_color to RGBA tuple
+        mask_color_rgb = self.mask_color.tuple()
+
+        # Find the bounding box of the mask color
+        y, x = np.where(np.all(mask_np == mask_color_rgb, axis=-1))
+
+        if len(x) == 0 or len(y) == 0:
+            # No pixels found with the given color
+            return BoundingBoxOutput(bounding_box=BoundingBoxField(x_min=0, y_min=0, x_max=0, y_max=0))
+
+        left, upper, right, lower = x.min(), y.min(), x.max(), y.max()
+
+        # Add the margin
+        left = max(0, left - self.margin)
+        upper = max(0, upper - self.margin)
+        right = min(mask_np.shape[1], right + self.margin)
+        lower = min(mask_np.shape[0], lower + self.margin)
+
+        bounding_box = BoundingBoxField(x_min=left, y_min=upper, x_max=right, y_max=lower)
+
+        return BoundingBoxOutput(bounding_box=bounding_box)

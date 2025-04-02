@@ -24,10 +24,10 @@ from invokeai.backend.util.devices import TorchDevice
 
 @invocation(
     "sd3_l2i",
-    title="SD3 Latents to Image",
+    title="Latents to Image - SD3",
     tags=["latents", "image", "vae", "l2i", "sd3"],
     category="latents",
-    version="1.3.1",
+    version="1.3.2",
 )
 class SD3LatentsToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Generates an image from latents."""
@@ -43,16 +43,11 @@ class SD3LatentsToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
 
     def _estimate_working_memory(self, latents: torch.Tensor, vae: AutoencoderKL) -> int:
         """Estimate the working memory required by the invocation in bytes."""
-        # It was found experimentally that the peak working memory scales linearly with the number of pixels and the
-        # element size (precision).
         out_h = LATENT_SCALE_FACTOR * latents.shape[-2]
         out_w = LATENT_SCALE_FACTOR * latents.shape[-1]
         element_size = next(vae.parameters()).element_size()
-        scaling_constant = 1230  # Determined experimentally.
+        scaling_constant = 2200  # Determined experimentally.
         working_memory = out_h * out_w * element_size * scaling_constant
-
-        # We add a 20% buffer to the working memory estimate to be safe.
-        working_memory = working_memory * 1.2
         return int(working_memory)
 
     @torch.no_grad()

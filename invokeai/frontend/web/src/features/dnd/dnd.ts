@@ -20,7 +20,7 @@ import {
   setUpscaleInitialImage,
 } from 'features/imageActions/actions';
 import { fieldImageCollectionValueChanged } from 'features/nodes/store/nodesSlice';
-import { selectFieldInputInstance, selectNodesSlice } from 'features/nodes/store/selectors';
+import { selectFieldInputInstanceSafe, selectNodesSlice } from 'features/nodes/store/selectors';
 import { type FieldIdentifier, isImageFieldCollectionInputInstance } from 'features/nodes/types/field';
 import type { ImageDTO } from 'services/api/types';
 import type { JsonObject } from 'type-fest';
@@ -106,18 +106,6 @@ export const singleCanvasEntityDndSource: DndSource<SingleCanvasEntityDndSourceD
   ..._singleCanvasEntity,
   typeGuard: buildTypeGuard(_singleCanvasEntity.key),
   getData: buildGetData(_singleCanvasEntity.key, _singleCanvasEntity.type),
-};
-
-const _singleWorkflowField = buildTypeAndKey('single-workflow-field');
-type SingleWorkflowFieldDndSourceData = DndData<
-  typeof _singleWorkflowField.type,
-  typeof _singleWorkflowField.key,
-  { fieldIdentifier: FieldIdentifier }
->;
-export const singleWorkflowFieldDndSource: DndSource<SingleWorkflowFieldDndSourceData> = {
-  ..._singleWorkflowField,
-  typeGuard: buildTypeGuard(_singleWorkflowField.key),
-  getData: buildGetData(_singleWorkflowField.key, _singleWorkflowField.type),
 };
 
 type DndTarget<TargetData extends DndData, SourceData extends DndData> = {
@@ -273,7 +261,7 @@ export const addImagesToNodeImageFieldCollectionDndTarget: DndTarget<
 
     const { fieldIdentifier } = targetData.payload;
 
-    const fieldInputInstance = selectFieldInputInstance(
+    const fieldInputInstance = selectFieldInputInstanceSafe(
       selectNodesSlice(getState()),
       fieldIdentifier.nodeId,
       fieldIdentifier.fieldName

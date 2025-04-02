@@ -99,7 +99,24 @@
         "clipboard": "Zwischenablage",
         "generating": "Generieren",
         "loadingModel": "Lade Modell",
-        "warnings": "Warnungen"
+        "warnings": "Warnungen",
+        "start": "Starten",
+        "count": "Anzahl",
+        "step": "Schritt",
+        "values": "Werte",
+        "min": "Min",
+        "max": "Max",
+        "resetToDefaults": "Auf Standard zurücksetzen",
+        "seed": "Seed",
+        "row": "Reihe",
+        "column": "Spalte",
+        "end": "Ende",
+        "layout": "Layout",
+        "board": "Ordner",
+        "combinatorial": "Kombinatorisch",
+        "saveChanges": "Änderungen speichern",
+        "error_withCount_one": "{{count}} Fehler",
+        "error_withCount_other": "{{count}} Fehler"
     },
     "gallery": {
         "galleryImageSize": "Bildgröße",
@@ -119,7 +136,6 @@
         "autoAssignBoardOnClick": "Board per Klick automatisch zuweisen",
         "noImageSelected": "Kein Bild ausgewählt",
         "starImage": "Bild markieren",
-        "assets": "Ressourcen",
         "unstarImage": "Markierung entfernen",
         "image": "Bild",
         "deleteSelection": "Lösche Auswahl",
@@ -609,7 +625,9 @@
         "hfTokenUnableToVerify": "HF-Token kann nicht überprüft werden",
         "hfTokenUnableToVerifyErrorMessage": "HuggingFace-Token kann nicht überprüft werden. Dies ist wahrscheinlich auf einen Netzwerkfehler zurückzuführen. Bitte versuchen Sie es später erneut.",
         "hfTokenSaved": "HF-Token gespeichert",
-        "hfTokenRequired": "Sie versuchen, ein Modell herunterzuladen, für das ein gültiges HuggingFace-Token erforderlich ist."
+        "hfTokenRequired": "Sie versuchen, ein Modell herunterzuladen, für das ein gültiges HuggingFace-Token erforderlich ist.",
+        "urlUnauthorizedErrorMessage2": "Hier erfahren wie.",
+        "urlForbidden": "Sie haben keinen Zugriff auf dieses Modell"
     },
     "parameters": {
         "images": "Bilder",
@@ -676,7 +694,8 @@
         "iterations": "Iterationen",
         "guidance": "Führung",
         "coherenceMode": "Modus",
-        "recallMetadata": "Metadaten abrufen"
+        "recallMetadata": "Metadaten abrufen",
+        "gaussianBlur": "Gaußsche Unschärfe"
     },
     "settings": {
         "displayInProgress": "Zwischenbilder anzeigen",
@@ -745,7 +764,16 @@
         "workflowDeleted": "Arbeitsablauf gelöscht",
         "errorCopied": "Fehler kopiert",
         "layerCopiedToClipboard": "Ebene in die Zwischenablage kopiert",
-        "sentToCanvas": "An Leinwand gesendet"
+        "sentToCanvas": "An Leinwand gesendet",
+        "problemDeletingWorkflow": "Problem beim Löschen des Arbeitsablaufs",
+        "uploadFailedInvalidUploadDesc_withCount_one": "Darf maximal 1 PNG-, JPEG- oder WEBP-Bild sein.",
+        "uploadFailedInvalidUploadDesc_withCount_other": "Dürfen maximal {{count}} PNG-, JPEG- oder WEBP-Bild sein.",
+        "problemRetrievingWorkflow": "Problem beim Abrufen des Arbeitsablaufs",
+        "uploadFailedInvalidUploadDesc": "Müssen PNG-, JPEG- oder WEBP-Bilder sein.",
+        "pasteSuccess": "Eingefügt in {{destination}}",
+        "pasteFailed": "Einfügen fehlgeschlagen",
+        "unableToCopy": "Kopieren nicht möglich",
+        "unableToCopyDesc_theseSteps": "diese Schritte"
     },
     "accessibility": {
         "uploadImage": "Bild hochladen",
@@ -876,7 +904,8 @@
         "canvas": "Leinwand",
         "prompts_one": "Prompt",
         "prompts_other": "Prompts",
-        "batchSize": "Stapelgröße"
+        "batchSize": "Stapelgröße",
+        "confirm": "Bestätigen"
     },
     "metadata": {
         "negativePrompt": "Negativ Beschreibung",
@@ -1232,7 +1261,6 @@
         "nodePack": "Knoten-Pack",
         "loadWorkflow": "Lade Workflow",
         "snapToGrid": "Am Gitternetz einrasten",
-        "unknownOutput": "Unbekannte Ausgabe: {{name}}",
         "updateNode": "Knoten updaten",
         "edge": "Rand / Kante",
         "sourceNodeDoesNotExist": "Ungültiger Rand: Quell- / Ausgabe-Knoten {{node}} existiert nicht",
@@ -1282,7 +1310,25 @@
         "unknownFieldType": "$t(nodes.unknownField) Typ: {{type}}",
         "unknownField": "Unbekanntes Feld",
         "unableToUpdateNodes_one": "{{count}} Knoten kann nicht aktualisiert werden",
-        "unableToUpdateNodes_other": "{{count}} Knoten können nicht aktualisiert werden"
+        "unableToUpdateNodes_other": "{{count}} Knoten können nicht aktualisiert werden",
+        "uniformRandomDistribution": "Uniforme Zufallsverteilung",
+        "linearDistribution": "Lineare Verteilung",
+        "generatorNRandomValues_one": "{{count}} Zufallswert",
+        "generatorNRandomValues_other": "{{count}} Zufallswerte",
+        "arithmeticSequence": "Arithmetische Folge",
+        "noBatchGroup": "keine Gruppe",
+        "generatorNoValues": "leer",
+        "generatorLoading": "wird geladen",
+        "generatorLoadFromFile": "Aus Datei laden",
+        "showEdgeLabels": "Kantenbeschriftungen anzeigen",
+        "downloadWorkflowError": "Fehler beim Herunterladen des Arbeitsablaufs",
+        "nodeName": "Knotenname",
+        "description": "Beschreibung",
+        "loadWorkflowDesc": "Arbeitsablauf laden?",
+        "loadWorkflowDesc2": "Ihr aktueller Arbeitsablauf enthält nicht gespeicherte Änderungen.",
+        "loadingTemplates": "Lade {{name}}",
+        "missingSourceOrTargetHandle": "Fehlender Quell- oder Zielgriff",
+        "missingSourceOrTargetNode": "Fehlender Quell- oder Zielknoten"
     },
     "hrf": {
         "enableHrf": "Korrektur für hohe Auflösungen",

@@ -69,6 +69,7 @@ const zModelType = z.enum([
   'main',
   'vae',
   'lora',
+  'llava_onevision',
   'control_lora',
   'controlnet',
   't2i_adapter',
@@ -79,6 +80,8 @@ const zModelType = z.enum([
   'spandrel_image_to_image',
   't5_encoder',
   'clip_embed',
+  'siglip',
+  'flux_redux',
 ]);
 const zSubModelType = z.enum([
   'unet',

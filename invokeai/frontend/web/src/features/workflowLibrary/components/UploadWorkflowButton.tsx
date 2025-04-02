@@ -1,35 +1,25 @@
-import { IconButton } from '@invoke-ai/ui-library';
-import { useWorkflowListMenu } from 'features/nodes/store/workflowListMenu';
-import { useLoadWorkflowFromFile } from 'features/workflowLibrary/hooks/useLoadWorkflowFromFile';
-import { memo, useCallback, useRef } from 'react';
+import { Button } from '@invoke-ai/ui-library';
+import { useLoadWorkflowWithDialog } from 'features/workflowLibrary/components/LoadWorkflowConfirmationAlertDialog';
+import { memo, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useTranslation } from 'react-i18next';
 import { PiUploadSimpleBold } from 'react-icons/pi';
 
-import { useSaveWorkflowAsDialog } from './SaveWorkflowAsDialog/useSaveWorkflowAsDialog';
-
-const UploadWorkflowButton = () => {
+export const UploadWorkflowButton = memo(() => {
   const { t } = useTranslation();
-  const resetRef = useRef<() => void>(null);
-  const workflowListMenu = useWorkflowListMenu();
-  const saveWorkflowAsDialog = useSaveWorkflowAsDialog();
-
-  const loadWorkflowFromFile = useLoadWorkflowFromFile({
-    resetRef,
-    onSuccess: () => {
-      workflowListMenu.close();
-      saveWorkflowAsDialog.onOpen();
-    },
-  });
+  const loadWorkflowWithDialog = useLoadWorkflowWithDialog();
 
   const onDropAccepted = useCallback(
-    (files: File[]) => {
-      if (!files[0]) {
+    ([file]: File[]) => {
+      if (!file) {
         return;
       }
-      loadWorkflowFromFile(files[0]);
+      loadWorkflowWithDialog({
+        type: 'file',
+        data: file,
+      });
     },
-    [loadWorkflowFromFile]
+    [loadWorkflowWithDialog]
   );
 
   const { getInputProps, getRootProps } = useDropzone({
@@ -38,20 +28,22 @@ const UploadWorkflowButton = () => {
     noDrag: true,
     multiple: false,
   });
+
   return (
     <>
-      <IconButton
-        aria-label={t('workflows.uploadAndSaveWorkflow')}
-        tooltip={t('workflows.uploadAndSaveWorkflow')}
-        icon={<PiUploadSimpleBold />}
+      <Button
+        leftIcon={<PiUploadSimpleBold />}
         {...getRootProps()}
         pointerEvents="auto"
         variant="ghost"
-      />
+        justifyContent="flex-start"
+      >
+        {t('workflows.uploadWorkflow')}
+      </Button>
 
       <input {...getInputProps()} />
     </>
   );
-};
+});
 
-export default memo(UploadWorkflowButton);
+UploadWorkflowButton.displayName = 'UploadWorkflowButton';

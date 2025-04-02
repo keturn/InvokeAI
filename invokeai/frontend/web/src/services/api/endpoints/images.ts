@@ -1,4 +1,3 @@
-import type { StartQueryActionCreatorOptions } from '@reduxjs/toolkit/dist/query/core/buildInitiate';
 import { $authToken } from 'app/store/nanostores/authToken';
 import { getStore } from 'app/store/nanostores/store';
 import type { BoardId } from 'features/gallery/store/types';
@@ -8,11 +7,14 @@ import type {
   DeleteBoardResult,
   GraphAndWorkflowResponse,
   ImageDTO,
+  ImageUploadEntryRequest,
+  ImageUploadEntryResponse,
   ListImagesArgs,
   ListImagesResponse,
   UploadImageArg,
 } from 'services/api/types';
 import { getCategories, getListImagesUrl } from 'services/api/util';
+import type { Param0 } from 'tsafe';
 import type { JsonObject } from 'type-fest';
 
 import type { ApiTagDescription } from '..';
@@ -53,15 +55,21 @@ export const imagesApi = api.injectEndpoints({
           'FetchOnReconnect',
         ];
       },
-      onQueryStarted(_, { dispatch, queryFulfilled }) {
+      async onQueryStarted(_, { dispatch, queryFulfilled }) {
         // Populate the getImageDTO cache with these images. This makes image selection smoother, because it doesn't
         // need to re-fetch image data when the user selects an image. The getImageDTO cache keeps data for the default
         // of 60s, so this data won't stick around too long.
-        queryFulfilled.then(({ data }) => {
-          for (const imageDTO of data.items) {
-            dispatch(imagesApi.util.upsertQueryData('getImageDTO', imageDTO.image_name, imageDTO));
-          }
-        });
+        const res = await queryFulfilled;
+        const imageDTOs = res.data.items;
+        const updates: Param0<typeof imagesApi.util.upsertQueryEntries> = [];
+        for (const imageDTO of imageDTOs) {
+          updates.push({
+            endpointName: 'getImageDTO',
+            arg: imageDTO.image_name,
+            value: imageDTO,
+          });
+        }
+        dispatch(imagesApi.util.upsertQueryEntries(updates));
       },
     }),
     getIntermediatesCount: build.query<number, void>({
@@ -281,6 +289,7 @@ export const imagesApi = api.injectEndpoints({
           },
         };
       },
+
       invalidatesTags: (result) => {
         if (!result || result.is_intermediate) {
           // Don't add it to anything
@@ -308,7 +317,13 @@ export const imagesApi = api.injectEndpoints({
         ];
       },
     }),
-
+    createImageUploadEntry: build.mutation<ImageUploadEntryResponse, ImageUploadEntryRequest>({
+      query: ({ width, height, board_id }) => ({
+        url: buildImagesUrl(),
+        method: 'POST',
+        body: { width, height, board_id },
+      }),
+    }),
     deleteBoard: build.mutation<DeleteBoardResult, string>({
       query: (board_id) => ({ url: buildBoardsUrl(board_id), method: 'DELETE' }),
       invalidatesTags: () => [
@@ -543,6 +558,7 @@ export const {
   useGetImageWorkflowQuery,
   useLazyGetImageWorkflowQuery,
   useUploadImageMutation,
+  useCreateImageUploadEntryMutation,
   useClearIntermediatesMutation,
   useAddImagesToBoardMutation,
   useRemoveImagesFromBoardMutation,
@@ -561,7 +577,7 @@ export const {
  */
 export const getImageDTOSafe = async (
   image_name: string,
-  options?: StartQueryActionCreatorOptions
+  options?: Parameters<typeof imagesApi.endpoints.getImageDTO.initiate>[1]
 ): Promise<ImageDTO | null> => {
   const _options = {
     subscribe: false,
@@ -581,7 +597,10 @@ export const getImageDTOSafe = async (
  * @param options The options for the query. By default, the query will not subscribe to the store.
  * @raises Error if the image is not found or there is an error fetching the image
  */
-export const getImageDTO = (image_name: string, options?: StartQueryActionCreatorOptions): Promise<ImageDTO> => {
+export const getImageDTO = (
+  image_name: string,
+  options?: Parameters<typeof imagesApi.endpoints.getImageDTO.initiate>[1]
+): Promise<ImageDTO> => {
   const _options = {
     subscribe: false,
     ...options,
@@ -599,7 +618,7 @@ export const getImageDTO = (image_name: string, options?: StartQueryActionCreato
  */
 export const getImageMetadata = (
   image_name: string,
-  options?: StartQueryActionCreatorOptions
+  options?: Parameters<typeof imagesApi.endpoints.getImageMetadata.initiate>[1]
 ): Promise<JsonObject | undefined> => {
   const _options = {
     subscribe: false,

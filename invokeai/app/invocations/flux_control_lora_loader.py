@@ -1,7 +1,6 @@
 from invokeai.app.invocations.baseinvocation import (
     BaseInvocation,
     BaseInvocationOutput,
-    Classification,
     invocation,
     invocation_output,
 )
@@ -21,11 +20,10 @@ class FluxControlLoRALoaderOutput(BaseInvocationOutput):
 
 @invocation(
     "flux_control_lora_loader",
-    title="Flux Control LoRA",
+    title="Control LoRA - FLUX",
     tags=["lora", "model", "flux"],
     category="model",
-    version="1.1.0",
-    classification=Classification.Prototype,
+    version="1.1.1",
 )
 class FluxControlLoRALoaderInvocation(BaseInvocation):
     """LoRA model and Image to use with FLUX transformer generation."""

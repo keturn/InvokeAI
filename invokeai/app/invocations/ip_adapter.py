@@ -13,10 +13,8 @@ from invokeai.app.services.model_records.model_records_base import ModelRecordCh
 from invokeai.app.services.shared.invocation_context import InvocationContext
 from invokeai.backend.model_manager.config import (
     AnyModelConfig,
-    BaseModelType,
     IPAdapterCheckpointConfig,
     IPAdapterInvokeAIConfig,
-    ModelType,
 )
 from invokeai.backend.model_manager.starter_models import (
     StarterModel,
@@ -24,6 +22,7 @@ from invokeai.backend.model_manager.starter_models import (
     ip_adapter_sd_image_encoder,
     ip_adapter_sdxl_image_encoder,
 )
+from invokeai.backend.model_manager.taxonomy import BaseModelType, ModelType
 
 
 class IPAdapterField(BaseModel):
@@ -69,7 +68,13 @@ CLIP_VISION_MODEL_MAP: dict[Literal["ViT-L", "ViT-H", "ViT-G"], StarterModel] = 
 }
 
 
-@invocation("ip_adapter", title="IP-Adapter", tags=["ip_adapter", "control"], category="ip_adapter", version="1.5.0")
+@invocation(
+    "ip_adapter",
+    title="IP-Adapter - SD1.5, SDXL",
+    tags=["ip_adapter", "control"],
+    category="ip_adapter",
+    version="1.5.1",
+)
 class IPAdapterInvocation(BaseInvocation):
     """Collects IP-Adapter info to pass to other nodes."""
 

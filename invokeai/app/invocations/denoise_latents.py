@@ -39,8 +39,8 @@ from invokeai.app.invocations.t2i_adapter import T2IAdapterField
 from invokeai.app.services.shared.invocation_context import InvocationContext
 from invokeai.app.util.controlnet_utils import prepare_control_image
 from invokeai.backend.ip_adapter.ip_adapter import IPAdapter
-from invokeai.backend.model_manager import BaseModelType, ModelVariantType
 from invokeai.backend.model_manager.config import AnyModelConfig
+from invokeai.backend.model_manager.taxonomy import BaseModelType, ModelVariantType
 from invokeai.backend.model_patcher import ModelPatcher
 from invokeai.backend.patches.layer_patcher import LayerPatcher
 from invokeai.backend.patches.model_patch_raw import ModelPatchRaw
@@ -127,10 +127,10 @@ def get_scheduler(
 
 @invocation(
     "denoise_latents",
-    title="Denoise Latents",
+    title="Denoise - SD1.5, SDXL",
     tags=["latents", "denoise", "txt2img", "t2i", "t2l", "img2img", "i2i", "l2l"],
     category="latents",
-    version="1.5.3",
+    version="1.5.4",
 )
 class DenoiseLatentsInvocation(BaseInvocation):
     """Denoises noisy latents to decodable images"""
@@ -898,7 +898,7 @@ class DenoiseLatentsInvocation(BaseInvocation):
 
         ### inpaint
         mask, masked_latents, is_gradient_mask = self.prep_inpaint_mask(context, latents)
-        # NOTE: We used to identify inpainting models by inpecting the shape of the loaded UNet model weights. Now we
+        # NOTE: We used to identify inpainting models by inspecting the shape of the loaded UNet model weights. Now we
         # use the ModelVariantType config. During testing, there was a report of a user with models that had an
         # incorrect ModelVariantType value. Re-installing the model fixed the issue. If this issue turns out to be
         # prevalent, we will have to revisit how we initialize the inpainting extensions.

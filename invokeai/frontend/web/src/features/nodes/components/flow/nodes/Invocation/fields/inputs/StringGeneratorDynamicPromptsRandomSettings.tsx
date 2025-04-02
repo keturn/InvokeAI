@@ -1,11 +1,9 @@
 import { Checkbox, CompositeNumberInput, Flex, FormControl, FormLabel } from '@invoke-ai/ui-library';
 import { GeneratorTextareaWithFileUpload } from 'features/nodes/components/flow/nodes/Invocation/fields/inputs/GeneratorTextareaWithFileUpload';
 import type { StringGeneratorDynamicPromptsRandom } from 'features/nodes/types/field';
-import { isNil, random } from 'lodash-es';
-import { memo, useCallback, useEffect, useMemo } from 'react';
+import { isNil } from 'lodash-es';
+import { memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDynamicPromptsQuery } from 'services/api/endpoints/utilities';
-import { useDebounce } from 'use-debounce';
 
 type StringGeneratorDynamicPromptsRandomSettingsProps = {
   state: StringGeneratorDynamicPromptsRandom;
@@ -14,47 +12,28 @@ type StringGeneratorDynamicPromptsRandomSettingsProps = {
 export const StringGeneratorDynamicPromptsRandomSettings = memo(
   ({ state, onChange }: StringGeneratorDynamicPromptsRandomSettingsProps) => {
     const { t } = useTranslation();
-    const loadingValues = useMemo(() => [`<${t('nodes.generatorLoading')}>`], [t]);
 
     const onChangeInput = useCallback(
       (input: string) => {
-        onChange({ ...state, input, values: loadingValues });
+        onChange({ ...state, input });
       },
-      [onChange, state, loadingValues]
+      [onChange, state]
     );
     const onChangeCount = useCallback(
       (v: number) => {
-        onChange({ ...state, count: v, values: loadingValues });
+        onChange({ ...state, count: v });
       },
-      [onChange, state, loadingValues]
+      [onChange, state]
     );
     const onToggleSeed = useCallback(() => {
-      onChange({ ...state, seed: isNil(state.seed) ? 0 : null, values: loadingValues });
-    }, [onChange, state, loadingValues]);
+      onChange({ ...state, seed: isNil(state.seed) ? 0 : null });
+    }, [onChange, state]);
     const onChangeSeed = useCallback(
       (seed?: number | null) => {
-        onChange({ ...state, seed, values: loadingValues });
+        onChange({ ...state, seed });
       },
-      [onChange, state, loadingValues]
+      [onChange, state]
     );
-
-    const arg = useMemo(() => {
-      const { input, count, seed } = state;
-      return { prompt: input, max_prompts: count, combinatorial: false, seed: seed ?? random() };
-    }, [state]);
-    const [debouncedArg] = useDebounce(arg, 300);
-
-    const { data, isLoading } = useDynamicPromptsQuery(debouncedArg);
-
-    useEffect(() => {
-      if (isLoading) {
-        onChange({ ...state, values: loadingValues });
-      } else if (data) {
-        onChange({ ...state, values: data.prompts });
-      } else {
-        onChange({ ...state, values: [] });
-      }
-    }, [data, isLoading, loadingValues, onChange, state]);
 
     return (
       <Flex gap={2} flexDir="column">

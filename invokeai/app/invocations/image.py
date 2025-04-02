@@ -13,6 +13,7 @@ from invokeai.app.invocations.baseinvocation import (
 )
 from invokeai.app.invocations.constants import IMAGE_MODES
 from invokeai.app.invocations.fields import (
+    BoundingBoxField,
     ColorField,
     FieldDescriptions,
     ImageField,
@@ -354,7 +355,6 @@ class ImageBlurInvocation(BaseInvocation, WithMetadata, WithBoard):
     tags=["image", "unsharp_mask"],
     category="image",
     version="1.2.2",
-    classification=Classification.Beta,
 )
 class UnsharpMaskInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Applies an unsharp mask filter to an image"""
@@ -842,7 +842,7 @@ CHANNEL_FORMATS = {
         "value",
     ],
     category="image",
-    version="1.2.2",
+    version="1.2.3",
 )
 class ImageChannelOffsetInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Add or subtract a value from a specific color channel of an image."""
@@ -852,24 +852,32 @@ class ImageChannelOffsetInvocation(BaseInvocation, WithMetadata, WithBoard):
     offset: int = InputField(default=0, ge=-255, le=255, description="The amount to adjust the channel by")
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
-        pil_image = context.images.get_pil(self.image.image_name)
+        image = context.images.get_pil(self.image.image_name, "RGBA")
 
         # extract the channel and mode from the input and reference tuple
         mode = CHANNEL_FORMATS[self.channel][0]
         channel_number = CHANNEL_FORMATS[self.channel][1]
 
         # Convert PIL image to new format
-        converted_image = numpy.array(pil_image.convert(mode)).astype(int)
+        converted_image = numpy.array(image.convert(mode)).astype(int)
         image_channel = converted_image[:, :, channel_number]
 
-        # Adjust the value, clipping to 0..255
-        image_channel = numpy.clip(image_channel + self.offset, 0, 255)
+        if self.channel == "Hue (HSV)":
+            # loop around the values because hue is special
+            image_channel = (image_channel + self.offset) % 256
+        else:
+            # Adjust the value, clipping to 0..255
+            image_channel = numpy.clip(image_channel + self.offset, 0, 255)
 
         # Put the channel back into the image
         converted_image[:, :, channel_number] = image_channel
 
         # Convert back to RGBA format and output
         pil_image = Image.fromarray(converted_image.astype(numpy.uint8), mode=mode).convert("RGBA")
+
+        # restore the alpha channel
+        if self.channel != "Alpha (RGBA)":
+            pil_image.putalpha(image.getchannel("A"))
 
         image_dto = context.images.save(image=pil_image)
 
@@ -898,7 +906,7 @@ class ImageChannelOffsetInvocation(BaseInvocation, WithMetadata, WithBoard):
         "value",
     ],
     category="image",
-    version="1.2.2",
+    version="1.2.3",
 )
 class ImageChannelMultiplyInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Scale a specific color channel of an image."""
@@ -909,14 +917,14 @@ class ImageChannelMultiplyInvocation(BaseInvocation, WithMetadata, WithBoard):
     invert_channel: bool = InputField(default=False, description="Invert the channel after scaling")
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
-        pil_image = context.images.get_pil(self.image.image_name)
+        image = context.images.get_pil(self.image.image_name, "RGBA")
 
         # extract the channel and mode from the input and reference tuple
         mode = CHANNEL_FORMATS[self.channel][0]
         channel_number = CHANNEL_FORMATS[self.channel][1]
 
         # Convert PIL image to new format
-        converted_image = numpy.array(pil_image.convert(mode)).astype(float)
+        converted_image = numpy.array(image.convert(mode)).astype(float)
         image_channel = converted_image[:, :, channel_number]
 
         # Adjust the value, clipping to 0..255
@@ -931,6 +939,10 @@ class ImageChannelMultiplyInvocation(BaseInvocation, WithMetadata, WithBoard):
 
         # Convert back to RGBA format and output
         pil_image = Image.fromarray(converted_image.astype(numpy.uint8), mode=mode).convert("RGBA")
+
+        # restore the alpha channel
+        if self.channel != "Alpha (RGBA)":
+            pil_image.putalpha(image.getchannel("A"))
 
         image_dto = context.images.save(image=pil_image)
 
@@ -997,10 +1009,10 @@ class CanvasPasteBackInvocation(BaseInvocation, WithMetadata, WithBoard):
 
 @invocation(
     "mask_from_id",
-    title="Mask from ID",
+    title="Mask from Segmented Image",
     tags=["image", "mask", "id"],
     category="image",
-    version="1.0.0",
+    version="1.0.1",
 )
 class MaskFromIDInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Generate a mask for a particular color in an ID Map"""
@@ -1010,40 +1022,24 @@ class MaskFromIDInvocation(BaseInvocation, WithMetadata, WithBoard):
     threshold: int = InputField(default=100, description="Threshold for color detection")
     invert: bool = InputField(default=False, description="Whether or not to invert the mask")
 
-    def rgba_to_hex(self, rgba_color: tuple[int, int, int, int]):
-        r, g, b, a = rgba_color
-        hex_code = "#{:02X}{:02X}{:02X}{:02X}".format(r, g, b, int(a * 255))
-        return hex_code
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.images.get_pil(self.image.image_name, mode="RGBA")
 
-    def id_to_mask(self, id_mask: Image.Image, color: tuple[int, int, int, int], threshold: int = 100):
-        if id_mask.mode != "RGB":
-            id_mask = id_mask.convert("RGB")
-
-        # Can directly just use the tuple but I'll leave this rgba_to_hex here
-        # incase anyone prefers using hex codes directly instead of the color picker
-        hex_color_str = self.rgba_to_hex(color)
-        rgb_color = numpy.array([int(hex_color_str[i : i + 2], 16) for i in (1, 3, 5)])
+        np_color = numpy.array(self.color.tuple())
 
         # Maybe there's a faster way to calculate this distance but I can't think of any right now.
-        color_distance = numpy.linalg.norm(id_mask - rgb_color, axis=-1)
+        color_distance = numpy.linalg.norm(image - np_color, axis=-1)
 
         # Create a mask based on the threshold and the distance calculated above
-        binary_mask = (color_distance < threshold).astype(numpy.uint8) * 255
+        binary_mask = (color_distance < self.threshold).astype(numpy.uint8) * 255
 
         # Convert the mask back to PIL
         binary_mask_pil = Image.fromarray(binary_mask)
 
-        return binary_mask_pil
-
-    def invoke(self, context: InvocationContext) -> ImageOutput:
-        image = context.images.get_pil(self.image.image_name)
-
-        mask = self.id_to_mask(image, self.color.tuple(), self.threshold)
-
         if self.invert:
-            mask = ImageOps.invert(mask)
+            binary_mask_pil = ImageOps.invert(binary_mask_pil)
 
-        image_dto = context.images.save(image=mask, image_category=ImageCategory.MASK)
+        image_dto = context.images.save(image=binary_mask_pil, image_category=ImageCategory.MASK)
 
         return ImageOutput.build(image_dto)
 
@@ -1054,7 +1050,7 @@ class MaskFromIDInvocation(BaseInvocation, WithMetadata, WithBoard):
     tags=["image", "mask", "id"],
     category="image",
     version="1.0.0",
-    classification=Classification.Internal,
+    classification=Classification.Deprecated,
 )
 class CanvasV2MaskAndCropInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Handles Canvas V2 image output masking and cropping"""
@@ -1088,6 +1084,131 @@ class CanvasV2MaskAndCropInvocation(BaseInvocation, WithMetadata, WithBoard):
             generated_image = context.images.get_pil(self.generated_image.image_name)
             generated_image.putalpha(mask)
             image_dto = context.images.save(image=generated_image)
+
+        return ImageOutput.build(image_dto)
+
+
+@invocation(
+    "expand_mask_with_fade", title="Expand Mask with Fade", tags=["image", "mask"], category="image", version="1.0.1"
+)
+class ExpandMaskWithFadeInvocation(BaseInvocation, WithMetadata, WithBoard):
+    """Expands a mask with a fade effect. The mask uses black to indicate areas to keep from the generated image and white for areas to discard.
+    The mask is thresholded to create a binary mask, and then a distance transform is applied to create a fade effect.
+    The fade size is specified in pixels, and the mask is expanded by that amount. The result is a mask with a smooth transition from black to white.
+    If the fade size is 0, the mask is returned as-is.
+    """
+
+    mask: ImageField = InputField(description="The mask to expand")
+    threshold: int = InputField(default=0, ge=0, le=255, description="The threshold for the binary mask (0-255)")
+    fade_size_px: int = InputField(default=32, ge=0, description="The size of the fade in pixels")
+
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        pil_mask = context.images.get_pil(self.mask.image_name, mode="L")
+
+        if self.fade_size_px == 0:
+            # If the fade size is 0, just return the mask as-is.
+            image_dto = context.images.save(image=pil_mask, image_category=ImageCategory.MASK)
+            return ImageOutput.build(image_dto)
+
+        np_mask = numpy.array(pil_mask)
+
+        # Threshold the mask to create a binary mask - 0 for black, 255 for white
+        # If we don't threshold we can get some weird artifacts
+        np_mask = numpy.where(np_mask > self.threshold, 255, 0).astype(numpy.uint8)
+
+        # Create a mask for the black region (1 where black, 0 otherwise)
+        black_mask = (np_mask == 0).astype(numpy.uint8)
+
+        # Invert the black region
+        bg_mask = 1 - black_mask
+
+        # Create a distance transform of the inverted mask
+        dist = cv2.distanceTransform(bg_mask, cv2.DIST_L2, 5)
+
+        # Normalize distances so that pixels <fade_size_px become a linear gradient (0 to 1)
+        d_norm = numpy.clip(dist / self.fade_size_px, 0, 1)
+
+        # Control points: x values (normalized distance) and corresponding fade pct y values.
+
+        # There are some magic numbers here that are used to create a smooth transition:
+        # - The first point is at 0% of fade size from edge of mask (meaning the edge of the mask), and is 0% fade (black)
+        # - The second point is 1px from the edge of the mask and also has 0% fade, effectively expanding the mask
+        #   by 1px. This fixes an issue where artifacts can occur at the edge of the mask
+        # - The third point is at 20% of the fade size from the edge of the mask and has 20% fade
+        # - The fourth point is at 80% of the fade size from the edge of the mask and has 90% fade
+        # - The last point is at 100% of the fade size from the edge of the mask and has 100% fade (white)
+
+        # x values: 0 = mask edge, 1 = fade_size_px from edge
+        x_control = numpy.array([0.0, 1.0 / self.fade_size_px, 0.2, 0.8, 1.0])
+        # y values: 0 = black, 1 = white
+        y_control = numpy.array([0.0, 0.0, 0.2, 0.9, 1.0])
+
+        # Fit a cubic polynomial that smoothly passes through the control points
+        coeffs = numpy.polyfit(x_control, y_control, 3)
+        poly = numpy.poly1d(coeffs)
+
+        # Evaluate the polynomial
+        feather = poly(d_norm)
+
+        # The polynomial fit isn't perfect. Points beyond the fade distance are likely to be slightly less than 1.0,
+        # even though the control points indicate that they should be exactly 1.0. This is due to the nature of the
+        # polynomial fit, which is a best approximation of the control points but not an exact match.
+
+        # When this occurs, the area outside the mask and fade-out will not be 100% transparent. For example, it may
+        # have an alpha value of 1 instead of 0. So we must force pixels at or beyond the fade distance to exactly 1.0.
+
+        # Force pixels at or beyond the fade distance to exactly 1.0
+        feather = numpy.where(d_norm >= 1.0, 1.0, feather)
+
+        # Clip any other values to ensure they're in the valid range [0,1]
+        feather = numpy.clip(feather, 0, 1)
+
+        # Build final image.
+        np_result = numpy.where(black_mask == 1, 0, (feather * 255).astype(numpy.uint8))
+
+        # Convert back to PIL, grayscale
+        pil_result = Image.fromarray(np_result.astype(numpy.uint8), mode="L")
+
+        image_dto = context.images.save(image=pil_result, image_category=ImageCategory.MASK)
+
+        return ImageOutput.build(image_dto)
+
+
+@invocation(
+    "apply_mask_to_image",
+    title="Apply Mask to Image",
+    tags=["image", "mask", "blend"],
+    category="image",
+    version="1.0.0",
+)
+class ApplyMaskToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
+    """
+    Extracts a region from a generated image using a mask and blends it seamlessly onto a source image.
+    The mask uses black to indicate areas to keep from the generated image and white for areas to discard.
+    """
+
+    image: ImageField = InputField(description="The image from which to extract the masked region")
+    mask: ImageField = InputField(description="The mask defining the region (black=keep, white=discard)")
+    invert_mask: bool = InputField(
+        default=False,
+        description="Whether to invert the mask before applying it",
+    )
+
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        # Load images
+        image = context.images.get_pil(self.image.image_name, mode="RGBA")
+        mask = context.images.get_pil(self.mask.image_name, mode="L")
+
+        if self.invert_mask:
+            # Invert the mask if requested
+            mask = ImageOps.invert(mask.copy())
+
+        # Combine the mask as the alpha channel of the image
+        r, g, b, _ = image.split()  # Split the image into RGB and alpha channels
+        result_image = Image.merge("RGBA", (r, g, b, mask))  # Use the mask as the new alpha channel
+
+        # Save the resulting image
+        image_dto = context.images.save(image=result_image)
 
         return ImageOutput.build(image_dto)
 
@@ -1153,4 +1274,58 @@ class ImageNoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
 
         image_dto = context.images.save(image=noisy_image)
 
+        return ImageOutput.build(image_dto)
+
+
+@invocation(
+    "crop_image_to_bounding_box",
+    title="Crop Image to Bounding Box",
+    category="image",
+    version="1.0.0",
+    tags=["image", "crop"],
+)
+class CropImageToBoundingBoxInvocation(BaseInvocation, WithMetadata, WithBoard):
+    """Crop an image to the given bounding box. If the bounding box is omitted, the image is cropped to the non-transparent pixels."""
+
+    image: ImageField = InputField(description="The image to crop")
+    bounding_box: BoundingBoxField | None = InputField(
+        default=None, description="The bounding box to crop the image to"
+    )
+
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.images.get_pil(self.image.image_name)
+
+        bounding_box = self.bounding_box.tuple() if self.bounding_box is not None else image.getbbox()
+
+        cropped_image = image.crop(bounding_box)
+
+        image_dto = context.images.save(image=cropped_image)
+        return ImageOutput.build(image_dto)
+
+
+@invocation(
+    "paste_image_into_bounding_box",
+    title="Paste Image into Bounding Box",
+    category="image",
+    version="1.0.0",
+    tags=["image", "crop"],
+)
+class PasteImageIntoBoundingBoxInvocation(BaseInvocation, WithMetadata, WithBoard):
+    """Paste the source image into the target image at the given bounding box.
+
+    The source image must be the same size as the bounding box, and the bounding box must fit within the target image."""
+
+    source_image: ImageField = InputField(description="The image to paste")
+    target_image: ImageField = InputField(description="The image to paste into")
+    bounding_box: BoundingBoxField = InputField(description="The bounding box to paste the image into")
+
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        source_image = context.images.get_pil(self.source_image.image_name, mode="RGBA")
+        target_image = context.images.get_pil(self.target_image.image_name, mode="RGBA")
+
+        bounding_box = self.bounding_box.tuple()
+
+        target_image.paste(source_image, bounding_box, source_image)
+
+        image_dto = context.images.save(image=target_image)
         return ImageOutput.build(image_dto)

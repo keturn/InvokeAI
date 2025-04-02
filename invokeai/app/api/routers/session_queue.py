@@ -10,11 +10,13 @@ from invokeai.app.services.session_queue.session_queue_common import (
     QUEUE_ITEM_STATUS,
     Batch,
     BatchStatus,
+    CancelAllExceptCurrentResult,
     CancelByBatchIDsResult,
     CancelByDestinationResult,
     ClearResult,
     EnqueueBatchResult,
     PruneResult,
+    RetryItemsResult,
     SessionQueueCountsByDestination,
     SessionQueueItem,
     SessionQueueItemDTO,
@@ -46,7 +48,9 @@ async def enqueue_batch(
 ) -> EnqueueBatchResult:
     """Processes a batch and enqueues the output graphs for execution."""
 
-    return ApiDependencies.invoker.services.session_queue.enqueue_batch(queue_id=queue_id, batch=batch, prepend=prepend)
+    return await ApiDependencies.invoker.services.session_queue.enqueue_batch(
+        queue_id=queue_id, batch=batch, prepend=prepend
+    )
 
 
 @session_queue_router.get(
@@ -95,6 +99,18 @@ async def Pause(
 
 
 @session_queue_router.put(
+    "/{queue_id}/cancel_all_except_current",
+    operation_id="cancel_all_except_current",
+    responses={200: {"model": CancelAllExceptCurrentResult}},
+)
+async def cancel_all_except_current(
+    queue_id: str = Path(description="The queue id to perform this operation on"),
+) -> CancelAllExceptCurrentResult:
+    """Immediately cancels all queue items except in-processing items"""
+    return ApiDependencies.invoker.services.session_queue.cancel_all_except_current(queue_id=queue_id)
+
+
+@session_queue_router.put(
     "/{queue_id}/cancel_by_batch_ids",
     operation_id="cancel_by_batch_ids",
     responses={200: {"model": CancelByBatchIDsResult}},
@@ -120,6 +136,19 @@ async def cancel_by_destination(
     return ApiDependencies.invoker.services.session_queue.cancel_by_destination(
         queue_id=queue_id, destination=destination
     )
+
+
+@session_queue_router.put(
+    "/{queue_id}/retry_items_by_id",
+    operation_id="retry_items_by_id",
+    responses={200: {"model": RetryItemsResult}},
+)
+async def retry_items_by_id(
+    queue_id: str = Path(description="The queue id to perform this operation on"),
+    item_ids: list[int] = Body(description="The queue item ids to retry"),
+) -> RetryItemsResult:
+    """Immediately cancels all queue items with the given origin"""
+    return ApiDependencies.invoker.services.session_queue.retry_items_by_id(queue_id=queue_id, item_ids=item_ids)
 
 
 @session_queue_router.put(

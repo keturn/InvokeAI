@@ -3,7 +3,6 @@ from typing import Optional
 from invokeai.app.invocations.baseinvocation import (
     BaseInvocation,
     BaseInvocationOutput,
-    Classification,
     invocation,
     invocation_output,
 )
@@ -14,7 +13,7 @@ from invokeai.app.util.t5_model_identifier import (
     preprocess_t5_encoder_model_identifier,
     preprocess_t5_tokenizer_model_identifier,
 )
-from invokeai.backend.model_manager.config import SubModelType
+from invokeai.backend.model_manager.taxonomy import SubModelType
 
 
 @invocation_output("sd3_model_loader_output")
@@ -30,11 +29,10 @@ class Sd3ModelLoaderOutput(BaseInvocationOutput):
 
 @invocation(
     "sd3_model_loader",
-    title="SD3 Main Model",
+    title="Main Model - SD3",
     tags=["model", "sd3"],
     category="model",
-    version="1.0.0",
-    classification=Classification.Prototype,
+    version="1.0.1",
 )
 class Sd3ModelLoaderInvocation(BaseInvocation):
     """Loads a SD3 base model, outputting its submodels."""
@@ -99,6 +97,6 @@ class Sd3ModelLoaderInvocation(BaseInvocation):
             transformer=TransformerField(transformer=transformer, loras=[]),
             clip_l=CLIPField(tokenizer=tokenizer_l, text_encoder=clip_encoder_l, loras=[], skipped_layers=0),
             clip_g=CLIPField(tokenizer=tokenizer_g, text_encoder=clip_encoder_g, loras=[], skipped_layers=0),
-            t5_encoder=T5EncoderField(tokenizer=tokenizer_t5, text_encoder=t5_encoder),
+            t5_encoder=T5EncoderField(tokenizer=tokenizer_t5, text_encoder=t5_encoder, loras=[]),
             vae=VAEField(vae=vae),
         )

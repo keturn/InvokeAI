@@ -10,11 +10,13 @@ from PIL import Image
 from torchvision.transforms.functional import resize as tv_resize
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from invokeai.app.invocations.baseinvocation import BaseInvocation, Classification, invocation
+from invokeai.app.invocations.baseinvocation import BaseInvocation, invocation
 from invokeai.app.invocations.fields import (
     DenoiseMaskField,
     FieldDescriptions,
     FluxConditioningField,
+    FluxFillConditioningField,
+    FluxReduxConditioningField,
     ImageField,
     Input,
     InputField,
@@ -46,8 +48,8 @@ from invokeai.backend.flux.sampling_utils import (
     pack,
     unpack,
 )
-from invokeai.backend.flux.text_conditioning import FluxTextConditioning
-from invokeai.backend.model_manager.config import ModelFormat
+from invokeai.backend.flux.text_conditioning import FluxReduxConditioning, FluxTextConditioning
+from invokeai.backend.model_manager.taxonomy import ModelFormat, ModelVariantType
 from invokeai.backend.patches.layer_patcher import LayerPatcher
 from invokeai.backend.patches.lora_conversions.flux_lora_constants import FLUX_LORA_TRANSFORMER_PREFIX
 from invokeai.backend.patches.model_patch_raw import ModelPatchRaw
@@ -61,8 +63,7 @@ from invokeai.backend.util.devices import TorchDevice
     title="FLUX Denoise",
     tags=["image", "flux"],
     category="image",
-    version="3.2.2",
-    classification=Classification.Prototype,
+    version="3.3.0",
 )
 class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Run denoising process with a FLUX transformer model."""
@@ -101,6 +102,16 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
     negative_text_conditioning: FluxConditioningField | list[FluxConditioningField] | None = InputField(
         default=None,
         description="Negative conditioning tensor. Can be None if cfg_scale is 1.0.",
+        input=Input.Connection,
+    )
+    redux_conditioning: FluxReduxConditioningField | list[FluxReduxConditioningField] | None = InputField(
+        default=None,
+        description="FLUX Redux conditioning tensor.",
+        input=Input.Connection,
+    )
+    fill_conditioning: FluxFillConditioningField | None = InputField(
+        default=None,
+        description="FLUX Fill conditioning.",
         input=Input.Connection,
     )
     cfg_scale: float | list[float] = InputField(default=1.0, description=FieldDescriptions.cfg_scale, title="CFG Scale")
@@ -190,11 +201,23 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
                 dtype=inference_dtype,
                 device=TorchDevice.choose_torch_device(),
             )
+        redux_conditionings: list[FluxReduxConditioning] = self._load_redux_conditioning(
+            context=context,
+            redux_cond_field=self.redux_conditioning,
+            packed_height=packed_h,
+            packed_width=packed_w,
+            device=TorchDevice.choose_torch_device(),
+            dtype=inference_dtype,
+        )
         pos_regional_prompting_extension = RegionalPromptingExtension.from_text_conditioning(
-            pos_text_conditionings, img_seq_len=packed_h * packed_w
+            text_conditioning=pos_text_conditionings,
+            redux_conditioning=redux_conditionings,
+            img_seq_len=packed_h * packed_w,
         )
         neg_regional_prompting_extension = (
-            RegionalPromptingExtension.from_text_conditioning(neg_text_conditionings, img_seq_len=packed_h * packed_w)
+            RegionalPromptingExtension.from_text_conditioning(
+                text_conditioning=neg_text_conditionings, redux_conditioning=[], img_seq_len=packed_h * packed_w
+            )
             if neg_text_conditionings
             else None
         )
@@ -243,8 +266,19 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
         if is_schnell and self.control_lora:
             raise ValueError("Control LoRAs cannot be used with FLUX Schnell")
 
-        # Prepare the extra image conditioning tensor if a FLUX structural control image is provided.
-        img_cond = self._prep_structural_control_img_cond(context)
+        # Prepare the extra image conditioning tensor (img_cond) for either FLUX structural control or FLUX Fill.
+        img_cond: torch.Tensor | None = None
+        is_flux_fill = transformer_config.variant == ModelVariantType.Inpaint  # type: ignore
+        if is_flux_fill:
+            img_cond = self._prep_flux_fill_img_cond(
+                context, device=TorchDevice.choose_torch_device(), dtype=inference_dtype
+            )
+        else:
+            if self.fill_conditioning is not None:
+                raise ValueError("fill_conditioning was provided, but the model is not a FLUX Fill model.")
+
+            if self.control_lora is not None:
+                img_cond = self._prep_structural_control_img_cond(context)
 
         inpaint_mask = self._prep_inpaint_mask(context, x)
 
@@ -253,7 +287,6 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
         # Pack all latent tensors.
         init_latents = pack(init_latents) if init_latents is not None else None
         inpaint_mask = pack(inpaint_mask) if inpaint_mask is not None else None
-        img_cond = pack(img_cond) if img_cond is not None else None
         noise = pack(noise)
         x = pack(x)
 
@@ -399,6 +432,42 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
             text_conditionings.append(FluxTextConditioning(t5_embeddings, clip_embeddings, mask))
 
         return text_conditionings
+
+    def _load_redux_conditioning(
+        self,
+        context: InvocationContext,
+        redux_cond_field: FluxReduxConditioningField | list[FluxReduxConditioningField] | None,
+        packed_height: int,
+        packed_width: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> list[FluxReduxConditioning]:
+        # Normalize to a list of FluxReduxConditioningFields.
+        if redux_cond_field is None:
+            return []
+
+        redux_cond_list = (
+            [redux_cond_field] if isinstance(redux_cond_field, FluxReduxConditioningField) else redux_cond_field
+        )
+
+        redux_conditionings: list[FluxReduxConditioning] = []
+        for redux_cond_field in redux_cond_list:
+            # Load the Redux conditioning tensor.
+            redux_cond_data = context.tensors.load(redux_cond_field.conditioning.tensor_name)
+            redux_cond_data.to(device=device, dtype=dtype)
+
+            # Load the mask, if provided.
+            mask: Optional[torch.Tensor] = None
+            if redux_cond_field.mask is not None:
+                mask = context.tensors.load(redux_cond_field.mask.tensor_name)
+                mask = mask.to(device=device)
+                mask = RegionalPromptingExtension.preprocess_regional_prompt_mask(
+                    mask, packed_height, packed_width, dtype, device
+                )
+
+            redux_conditionings.append(FluxReduxConditioning(redux_embeddings=redux_cond_data, mask=mask))
+
+        return redux_conditionings
 
     @classmethod
     def prep_cfg_scale(
@@ -610,7 +679,70 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
         img_cond = einops.rearrange(img_cond, "h w c -> 1 c h w")
 
         vae_info = context.models.load(self.controlnet_vae.vae)
-        return FluxVaeEncodeInvocation.vae_encode(vae_info=vae_info, image_tensor=img_cond)
+        img_cond = FluxVaeEncodeInvocation.vae_encode(vae_info=vae_info, image_tensor=img_cond)
+
+        return pack(img_cond)
+
+    def _prep_flux_fill_img_cond(
+        self, context: InvocationContext, device: torch.device, dtype: torch.dtype
+    ) -> torch.Tensor:
+        """Prepare the FLUX Fill conditioning. This method should be called iff the model is a FLUX Fill model.
+
+        This logic is based on:
+        https://github.com/black-forest-labs/flux/blob/716724eb276d94397be99710a0a54d352664e23b/src/flux/sampling.py#L107-L157
+        """
+        # Validate inputs.
+        if self.fill_conditioning is None:
+            raise ValueError("A FLUX Fill model is being used without fill_conditioning.")
+        # TODO(ryand): We should probable rename controlnet_vae. It's used for more than just ControlNets.
+        if self.controlnet_vae is None:
+            raise ValueError("A FLUX Fill model is being used without controlnet_vae.")
+        if self.control_lora is not None:
+            raise ValueError(
+                "A FLUX Fill model is being used, but a control_lora was provided. Control LoRAs are not compatible with FLUX Fill models."
+            )
+
+        # Log input warnings related to FLUX Fill usage.
+        if self.denoise_mask is not None:
+            context.logger.warning(
+                "Both fill_conditioning and a denoise_mask were provided. You probably meant to use one or the other."
+            )
+        if self.guidance < 25.0:
+            context.logger.warning("A guidance value of ~30.0 is recommended for FLUX Fill models.")
+
+        # Load the conditioning image and resize it to the target image size.
+        cond_img = context.images.get_pil(self.fill_conditioning.image.image_name, mode="RGB")
+        cond_img = cond_img.resize((self.width, self.height), Image.Resampling.BICUBIC)
+        cond_img = np.array(cond_img)
+        cond_img = torch.from_numpy(cond_img).float() / 127.5 - 1.0
+        cond_img = einops.rearrange(cond_img, "h w c -> 1 c h w")
+        cond_img = cond_img.to(device=device, dtype=dtype)
+
+        # Load the mask and resize it to the target image size.
+        mask = context.tensors.load(self.fill_conditioning.mask.tensor_name)
+        # We expect mask to be a bool tensor with shape [1, H, W].
+        assert mask.dtype == torch.bool
+        assert mask.dim() == 3
+        assert mask.shape[0] == 1
+        mask = tv_resize(mask, size=[self.height, self.width], interpolation=tv_transforms.InterpolationMode.NEAREST)
+        mask = mask.to(device=device, dtype=dtype)
+        mask = einops.rearrange(mask, "1 h w -> 1 1 h w")
+
+        # Prepare image conditioning.
+        cond_img = cond_img * (1 - mask)
+        vae_info = context.models.load(self.controlnet_vae.vae)
+        cond_img = FluxVaeEncodeInvocation.vae_encode(vae_info=vae_info, image_tensor=cond_img)
+        cond_img = pack(cond_img)
+
+        # Prepare mask conditioning.
+        mask = mask[:, 0, :, :]
+        # Rearrange mask to a 16-channel representation that matches the shape of the VAE-encoded latent space.
+        mask = einops.rearrange(mask, "b (h ph) (w pw) -> b (ph pw) h w", ph=8, pw=8)
+        mask = pack(mask)
+
+        # Merge image and mask conditioning.
+        img_cond = torch.cat((cond_img, mask), dim=-1)
+        return img_cond
 
     def _normalize_ip_adapter_fields(self) -> list[IPAdapterField]:
         if self.ip_adapter is None:

@@ -28,12 +28,10 @@ from invokeai.app.services.model_records import (
     UnknownModelException,
 )
 from invokeai.app.util.suppress_output import SuppressOutput
+from invokeai.backend.model_manager import BaseModelType, ModelFormat, ModelType
 from invokeai.backend.model_manager.config import (
     AnyModelConfig,
-    BaseModelType,
     MainCheckpointConfig,
-    ModelFormat,
-    ModelType,
 )
 from invokeai.backend.model_manager.load.model_cache.cache_stats import CacheStats
 from invokeai.backend.model_manager.metadata.fetch.huggingface import HuggingFaceMetadataFetch
@@ -856,6 +854,18 @@ async def get_stats() -> Optional[CacheStats]:
     """Return performance statistics on the model manager's RAM cache. Will return null if no models have been loaded."""
 
     return ApiDependencies.invoker.services.model_manager.load.ram_cache.stats
+
+
+@model_manager_router.post(
+    "/empty_model_cache",
+    operation_id="empty_model_cache",
+    status_code=200,
+)
+async def empty_model_cache() -> None:
+    """Drop all models from the model cache to free RAM/VRAM. 'Locked' models that are in active use will not be dropped."""
+    # Request 1000GB of room in order to force the cache to drop all models.
+    ApiDependencies.invoker.services.logger.info("Emptying model cache.")
+    ApiDependencies.invoker.services.model_manager.load.ram_cache.make_room(1000 * 2**30)
 
 
 class HFTokenStatus(str, Enum):

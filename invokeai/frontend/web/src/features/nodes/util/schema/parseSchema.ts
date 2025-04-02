@@ -58,10 +58,39 @@ const isAllowedOutputField = (nodeType: string, fieldName: string) => {
   if (RESERVED_OUTPUT_FIELD_NAMES.includes(fieldName)) {
     return false;
   }
-  if (nodeType === 'image_batch' && fieldName !== 'image') {
-    return false;
-  }
   return true;
+};
+
+const isBatchInputField = (nodeType: string, fieldName: string) => {
+  if (nodeType === 'float_batch' && fieldName === 'floats') {
+    return true;
+  }
+  if (nodeType === 'integer_batch' && fieldName === 'integers') {
+    return true;
+  }
+  if (nodeType === 'string_batch' && fieldName === 'strings') {
+    return true;
+  }
+  if (nodeType === 'image_batch' && fieldName === 'images') {
+    return true;
+  }
+  return false;
+};
+
+const isBatchOutputField = (nodeType: string, fieldName: string) => {
+  if (nodeType === 'float_generator' && fieldName === 'floats') {
+    return true;
+  }
+  if (nodeType === 'integer_generator' && fieldName === 'integers') {
+    return true;
+  }
+  if (nodeType === 'string_generator' && fieldName === 'strings') {
+    return true;
+  }
+  if (nodeType === 'image_generator' && fieldName === 'images') {
+    return true;
+  }
+  return false;
 };
 
 const isNotInDenylist = (schema: InvocationSchemaObject) =>
@@ -128,9 +157,7 @@ export const parseSchema = (
           fieldType.originalType = deepClone(originalFieldType);
         }
 
-        if (type === 'float_batch' && propertyName === 'floats') {
-          fieldType.batch = true;
-        } else if (type === 'integer_batch' && propertyName === 'integers') {
+        if (isBatchInputField(type, propertyName)) {
           fieldType.batch = true;
         }
 
@@ -195,11 +222,7 @@ export const parseSchema = (
           fieldType.originalType = deepClone(originalFieldType);
         }
 
-        if (type === 'float_generator' && propertyName === 'floats') {
-          fieldType.batch = true;
-        } else if (type === 'integer_generator' && propertyName === 'integers') {
-          fieldType.batch = true;
-        } else if (type === 'string_generator' && propertyName === 'strings') {
+        if (isBatchOutputField(type, propertyName)) {
           fieldType.batch = true;
         }
 

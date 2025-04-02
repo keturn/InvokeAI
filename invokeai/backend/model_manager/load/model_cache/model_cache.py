@@ -1,13 +1,14 @@
 import gc
 import logging
+import threading
 import time
+from functools import wraps
 from logging import Logger
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import psutil
 import torch
 
-from invokeai.backend.model_manager import AnyModel, SubModelType
 from invokeai.backend.model_manager.load.memory_snapshot import MemorySnapshot
 from invokeai.backend.model_manager.load.model_cache.cache_record import CacheRecord
 from invokeai.backend.model_manager.load.model_cache.cache_stats import CacheStats
@@ -21,6 +22,7 @@ from invokeai.backend.model_manager.load.model_cache.torch_module_autocast.torch
     apply_custom_layers_to_model,
 )
 from invokeai.backend.model_manager.load.model_util import calc_model_size_by_data
+from invokeai.backend.model_manager.taxonomy import AnyModel, SubModelType
 from invokeai.backend.util.devices import TorchDevice
 from invokeai.backend.util.logging import InvokeAILogger
 from invokeai.backend.util.prefix_logger_adapter import PrefixedLoggerAdapter
@@ -39,6 +41,17 @@ def get_model_cache_key(model_key: str, submodel_type: Optional[SubModelType] = 
         return f"{model_key}:{submodel_type.value}"
     else:
         return model_key
+
+
+def synchronized(method: Callable[..., Any]) -> Callable[..., Any]:
+    """A decorator that applies the class's self._lock to the method."""
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:  # Automatically acquire and release the lock
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class ModelCache:
@@ -125,16 +138,25 @@ class ModelCache:
 
         self._ram_cache_size_bytes = self._calc_ram_available_to_model_cache()
 
+        # A lock applied to all public method calls to make the ModelCache thread-safe.
+        # At the time of writing, the ModelCache should only be accessed from two threads:
+        # - The graph execution thread
+        # - Requests to empty the cache from a separate thread
+        self._lock = threading.RLock()
+
     @property
+    @synchronized
     def stats(self) -> Optional[CacheStats]:
         """Return collected CacheStats object."""
         return self._stats
 
     @stats.setter
+    @synchronized
     def stats(self, stats: CacheStats) -> None:
         """Set the CacheStats object for collecting cache statistics."""
         self._stats = stats
 
+    @synchronized
     def put(self, key: str, model: AnyModel) -> None:
         """Add a model to the cache."""
         if key in self._cached_models:
@@ -170,9 +192,10 @@ class ModelCache:
         self._cached_models[key] = cache_record
         self._cache_stack.append(key)
         self._logger.debug(
-            f"Added model {key} (Type: {model.__class__.__name__}, Wrap mode: {wrapped_model.__class__.__name__}, Model size: {size/MB:.2f}MB)"
+            f"Added model {key} (Type: {model.__class__.__name__}, Wrap mode: {wrapped_model.__class__.__name__}, Model size: {size / MB:.2f}MB)"
         )
 
+    @synchronized
     def get(self, key: str, stats_name: Optional[str] = None) -> CacheRecord:
         """Retrieve a model from the cache.
 
@@ -208,6 +231,7 @@ class ModelCache:
         self._logger.debug(f"Cache hit: {key} (Type: {cache_entry.cached_model.model.__class__.__name__})")
         return cache_entry
 
+    @synchronized
     def lock(self, cache_entry: CacheRecord, working_mem_bytes: Optional[int]) -> None:
         """Lock a model for use and move it into VRAM."""
         if cache_entry.key not in self._cached_models:
@@ -243,6 +267,7 @@ class ModelCache:
 
         self._log_cache_state()
 
+    @synchronized
     def unlock(self, cache_entry: CacheRecord) -> None:
         """Unlock a model."""
         if cache_entry.key not in self._cached_models:
@@ -278,7 +303,7 @@ class ModelCache:
         # 2. If the model can't fit fully into VRAM, then unload all other models and load as much of the model as
         #    possible.
         vram_bytes_freed = self._offload_unlocked_models(model_vram_needed, working_mem_bytes)
-        self._logger.debug(f"Unloaded models (if necessary): vram_bytes_freed={(vram_bytes_freed/MB):.2f}MB")
+        self._logger.debug(f"Unloaded models (if necessary): vram_bytes_freed={(vram_bytes_freed / MB):.2f}MB")
 
         # Check the updated vram_available after offloading.
         vram_available = self._get_vram_available(working_mem_bytes)
@@ -292,7 +317,7 @@ class ModelCache:
             vram_bytes_freed_from_own_model = self._move_model_to_ram(cache_entry, -vram_available)
             vram_available = self._get_vram_available(working_mem_bytes)
             self._logger.debug(
-                f"Unloaded {vram_bytes_freed_from_own_model/MB:.2f}MB from the model being locked ({cache_entry.key})."
+                f"Unloaded {vram_bytes_freed_from_own_model / MB:.2f}MB from the model being locked ({cache_entry.key})."
             )
 
         # Move as much of the model as possible into VRAM.
@@ -308,10 +333,12 @@ class ModelCache:
         self._logger.info(
             f"Loaded model '{cache_entry.key}' ({cache_entry.cached_model.model.__class__.__name__}) onto "
             f"{self._execution_device.type} device in {(time.time() - start_time):.2f}s. "
-            f"Total model size: {model_total_bytes/MB:.2f}MB, "
-            f"VRAM: {model_cur_vram_bytes/MB:.2f}MB ({loaded_percent:.1%})"
+            f"Total model size: {model_total_bytes / MB:.2f}MB, "
+            f"VRAM: {model_cur_vram_bytes / MB:.2f}MB ({loaded_percent:.1%})"
         )
-        self._logger.debug(f"Loaded model onto execution device: model_bytes_loaded={(model_bytes_loaded/MB):.2f}MB, ")
+        self._logger.debug(
+            f"Loaded model onto execution device: model_bytes_loaded={(model_bytes_loaded / MB):.2f}MB, "
+        )
         self._logger.debug(
             f"After loading: {self._get_vram_state_str(model_cur_vram_bytes, model_total_bytes, vram_available)}"
         )
@@ -400,23 +427,19 @@ class ModelCache:
         # Heuristics for dynamically calculating the RAM cache size, **in order of increasing priority**:
         # 1. As an initial default, use 50% of the total RAM for InvokeAI.
         #   - Assume a 2GB baseline for InvokeAI's non-model RAM usage, and use the rest of the RAM for the model cache.
-        # 2. On a system with a lot of RAM (e.g. 64GB+), users probably don't want InvokeAI to eat up too much RAM.
-        #    There are diminishing returns to storing more and more models. So, we apply an upper bound.
+        # 2. On a system with a lot of RAM, users probably don't want InvokeAI to eat up too much RAM.
+        #    There are diminishing returns to storing more and more models. So, we apply an upper bound. (Keep in mind
+        #    that most OSes have some amount of disk caching, which we still benefit from if there is excess memory,
+        #    even if we drop models from the cache.)
         #    - On systems without a CUDA device, the upper bound is 32GB.
-        #    - On systems with a CUDA device, the upper bound is 2x the amount of VRAM.
-        # 3. On systems with a CUDA device, the minimum should be the VRAM size (less the working memory).
-        #    - Setting lower than this would mean that we sometimes kick models out of the cache when there is room for
-        #      all models in VRAM.
-        #    - Consider an extreme case of a system with 8GB RAM / 24GB VRAM. I haven't tested this, but I think
-        #      you'd still want the RAM cache size to be ~24GB (less the working memory). (Though you'd probably want to
-        #      set `keep_ram_copy_of_weights: false` in this case.)
-        # 4. Absolute minimum of 4GB.
+        #    - On systems with a CUDA device, the upper bound is 1x the amount of VRAM (less the working memory).
+        # 3. Absolute minimum of 4GB.
 
         # NOTE(ryand): We explored dynamically adjusting the RAM cache size based on memory pressure (using psutil), but
         # decided against it for now, for the following reasons:
         # - It was surprisingly difficult to get memory metrics with consistent definitions across OSes. (If you go
-        # down this path again, don't underestimate the amount of complexity here and be sure to test rigorously on all
-        # OSes.)
+        #   down this path again, don't underestimate the amount of complexity here and be sure to test rigorously on all
+        #   OSes.)
         # - Making the RAM cache size dynamic opens the door for performance regressions that are hard to diagnose and
         #   hard for users to understand. It is better for users to see that their RAM is maxed out, and then override
         #   the default value if desired.
@@ -438,26 +461,18 @@ class ModelCache:
         # ------------------
         max_ram_cache_size_bytes = 32 * GB
         if total_cuda_vram_bytes is not None:
-            max_ram_cache_size_bytes = 2 * total_cuda_vram_bytes
+            if self._max_vram_cache_size_gb is not None:
+                max_ram_cache_size_bytes = int(self._max_vram_cache_size_gb * GB)
+            else:
+                max_ram_cache_size_bytes = total_cuda_vram_bytes - int(self._execution_device_working_mem_gb * GB)
         if ram_available_to_model_cache > max_ram_cache_size_bytes:
             heuristics_applied.append(2)
             ram_available_to_model_cache = max_ram_cache_size_bytes
 
         # Apply heuristic 3.
         # ------------------
-        if total_cuda_vram_bytes is not None:
-            if self._max_vram_cache_size_gb is not None:
-                min_ram_cache_size_bytes = int(self._max_vram_cache_size_gb * GB)
-            else:
-                min_ram_cache_size_bytes = total_cuda_vram_bytes - int(self._execution_device_working_mem_gb * GB)
-            if ram_available_to_model_cache < min_ram_cache_size_bytes:
-                heuristics_applied.append(3)
-                ram_available_to_model_cache = min_ram_cache_size_bytes
-
-        # Apply heuristic 4.
-        # ------------------
         if ram_available_to_model_cache < 4 * GB:
-            heuristics_applied.append(4)
+            heuristics_applied.append(3)
             ram_available_to_model_cache = 4 * GB
 
         self._logger.info(
@@ -482,10 +497,10 @@ class ModelCache:
         """Helper function for preparing a VRAM state log string."""
         model_cur_vram_bytes_percent = model_cur_vram_bytes / model_total_bytes if model_total_bytes > 0 else 0
         return (
-            f"model_total={model_total_bytes/MB:.0f} MB, "
-            + f"model_vram={model_cur_vram_bytes/MB:.0f} MB ({model_cur_vram_bytes_percent:.1%} %), "
+            f"model_total={model_total_bytes / MB:.0f} MB, "
+            + f"model_vram={model_cur_vram_bytes / MB:.0f} MB ({model_cur_vram_bytes_percent:.1%} %), "
             # + f"vram_total={int(self._max_vram_cache_size * GB)/MB:.0f} MB, "
-            + f"vram_available={(vram_available/MB):.0f} MB, "
+            + f"vram_available={(vram_available / MB):.0f} MB, "
         )
 
     def _offload_unlocked_models(self, vram_bytes_required: int, working_mem_bytes: Optional[int] = None) -> int:
@@ -496,7 +511,7 @@ class ModelCache:
             int: The number of bytes freed based on believed model sizes. The actual change in VRAM may be different.
         """
         self._logger.debug(
-            f"Offloading unlocked models with goal of making room for {vram_bytes_required/MB:.2f}MB of VRAM."
+            f"Offloading unlocked models with goal of making room for {vram_bytes_required / MB:.2f}MB of VRAM."
         )
         vram_bytes_freed = 0
         # TODO(ryand): Give more thought to the offloading policy used here.
@@ -514,7 +529,7 @@ class ModelCache:
             cache_entry_bytes_freed = self._move_model_to_ram(cache_entry, vram_bytes_to_free)
             if cache_entry_bytes_freed > 0:
                 self._logger.debug(
-                    f"Unloaded {cache_entry.key} from VRAM to free {(cache_entry_bytes_freed/MB):.0f} MB."
+                    f"Unloaded {cache_entry.key} from VRAM to free {(cache_entry_bytes_freed / MB):.0f} MB."
                 )
             vram_bytes_freed += cache_entry_bytes_freed
 
@@ -588,6 +603,7 @@ class ModelCache:
 
         self._logger.debug(log)
 
+    @synchronized
     def make_room(self, bytes_needed: int) -> None:
         """Make enough room in the cache to accommodate a new model of indicated size.
 
@@ -595,7 +611,7 @@ class ModelCache:
         external references to the model, there's nothing that the cache can do about it, and those models will not be
         garbage-collected.
         """
-        self._logger.debug(f"Making room for {bytes_needed/MB:.2f}MB of RAM.")
+        self._logger.debug(f"Making room for {bytes_needed / MB:.2f}MB of RAM.")
         self._log_cache_state(title="Before dropping models:")
 
         ram_bytes_available = self._get_ram_available()
@@ -611,7 +627,7 @@ class ModelCache:
             if not cache_entry.is_locked:
                 ram_bytes_freed += cache_entry.cached_model.total_bytes()
                 self._logger.debug(
-                    f"Dropping {model_key} from RAM cache to free {(cache_entry.cached_model.total_bytes()/MB):.2f}MB."
+                    f"Dropping {model_key} from RAM cache to free {(cache_entry.cached_model.total_bytes() / MB):.2f}MB."
                 )
                 self._delete_cache_entry(cache_entry)
                 del cache_entry
@@ -636,7 +652,7 @@ class ModelCache:
             gc.collect()
 
         TorchDevice.empty_cache()
-        self._logger.debug(f"Dropped {models_cleared} models to free {ram_bytes_freed/MB:.2f}MB of RAM.")
+        self._logger.debug(f"Dropped {models_cleared} models to free {ram_bytes_freed / MB:.2f}MB of RAM.")
         self._log_cache_state(title="After dropping models:")
 
     def _delete_cache_entry(self, cache_entry: CacheRecord) -> None:

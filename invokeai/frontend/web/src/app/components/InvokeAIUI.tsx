@@ -2,6 +2,7 @@ import 'i18n';
 
 import type { Middleware } from '@reduxjs/toolkit';
 import type { StudioInitAction } from 'app/hooks/useStudioInitAction';
+import { $didStudioInit } from 'app/hooks/useStudioInitAction';
 import type { LoggingOverrides } from 'app/logging/logger';
 import { $loggingOverrides, configureLogging } from 'app/logging/logger';
 import { $authToken } from 'app/store/nanostores/authToken';
@@ -15,10 +16,18 @@ import { $openAPISchemaUrl } from 'app/store/nanostores/openAPISchemaUrl';
 import { $projectId, $projectName, $projectUrl } from 'app/store/nanostores/projectId';
 import { $queueId, DEFAULT_QUEUE_ID } from 'app/store/nanostores/queueId';
 import { $store } from 'app/store/nanostores/store';
-import { $workflowCategories } from 'app/store/nanostores/workflowCategories';
 import { createStore } from 'app/store/store';
 import type { PartialAppConfig } from 'app/types/invokeai';
 import Loading from 'common/components/Loading/Loading';
+import type { WorkflowSortOption, WorkflowTagCategory } from 'features/nodes/store/workflowLibrarySlice';
+import {
+  $workflowLibraryCategoriesOptions,
+  $workflowLibrarySortOptions,
+  $workflowLibraryTagCategoriesOptions,
+  DEFAULT_WORKFLOW_LIBRARY_CATEGORIES,
+  DEFAULT_WORKFLOW_LIBRARY_SORT_OPTIONS,
+  DEFAULT_WORKFLOW_LIBRARY_TAG_CATEGORIES,
+} from 'features/nodes/store/workflowLibrarySlice';
 import type { WorkflowCategory } from 'features/nodes/types/workflow';
 import type { PropsWithChildren, ReactNode } from 'react';
 import React, { lazy, memo, useEffect, useLayoutEffect, useMemo } from 'react';
@@ -47,6 +56,8 @@ interface Props extends PropsWithChildren {
   isDebugging?: boolean;
   logo?: ReactNode;
   workflowCategories?: WorkflowCategory[];
+  workflowTagCategories?: WorkflowTagCategory[];
+  workflowSortOptions?: WorkflowSortOption[];
   loggingOverrides?: LoggingOverrides;
 }
 
@@ -67,6 +78,8 @@ const InvokeAIUI = ({
   isDebugging = false,
   logo,
   workflowCategories,
+  workflowTagCategories,
+  workflowSortOptions,
   loggingOverrides,
 }: Props) => {
   useLayoutEffect(() => {
@@ -86,6 +99,12 @@ const InvokeAIUI = ({
       loggingOverrides?.logNamespaces ?? '*'
     );
   }, [loggingOverrides]);
+
+  useLayoutEffect(() => {
+    if (studioInitAction) {
+      $didStudioInit.set(false);
+    }
+  }, [studioInitAction]);
 
   useEffect(() => {
     // configure API client token
@@ -188,13 +207,33 @@ const InvokeAIUI = ({
 
   useEffect(() => {
     if (workflowCategories) {
-      $workflowCategories.set(workflowCategories);
+      $workflowLibraryCategoriesOptions.set(workflowCategories);
     }
 
     return () => {
-      $workflowCategories.set([]);
+      $workflowLibraryCategoriesOptions.set(DEFAULT_WORKFLOW_LIBRARY_CATEGORIES);
     };
   }, [workflowCategories]);
+
+  useEffect(() => {
+    if (workflowTagCategories) {
+      $workflowLibraryTagCategoriesOptions.set(workflowTagCategories);
+    }
+
+    return () => {
+      $workflowLibraryTagCategoriesOptions.set(DEFAULT_WORKFLOW_LIBRARY_TAG_CATEGORIES);
+    };
+  }, [workflowTagCategories]);
+
+  useEffect(() => {
+    if (workflowSortOptions) {
+      $workflowLibrarySortOptions.set(workflowSortOptions);
+    }
+
+    return () => {
+      $workflowLibrarySortOptions.set(DEFAULT_WORKFLOW_LIBRARY_SORT_OPTIONS);
+    };
+  }, [workflowSortOptions]);
 
   useEffect(() => {
     if (socketOptions) {

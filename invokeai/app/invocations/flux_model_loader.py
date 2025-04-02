@@ -3,7 +3,6 @@ from typing import Literal
 from invokeai.app.invocations.baseinvocation import (
     BaseInvocation,
     BaseInvocationOutput,
-    Classification,
     invocation,
     invocation_output,
 )
@@ -17,8 +16,8 @@ from invokeai.app.util.t5_model_identifier import (
 from invokeai.backend.flux.util import max_seq_lengths
 from invokeai.backend.model_manager.config import (
     CheckpointConfigBase,
-    SubModelType,
 )
+from invokeai.backend.model_manager.taxonomy import SubModelType
 
 
 @invocation_output("flux_model_loader_output")
@@ -37,11 +36,10 @@ class FluxModelLoaderOutput(BaseInvocationOutput):
 
 @invocation(
     "flux_model_loader",
-    title="Flux Main Model",
+    title="Main Model - FLUX",
     tags=["model", "flux"],
     category="model",
-    version="1.0.4",
-    classification=Classification.Prototype,
+    version="1.0.6",
 )
 class FluxModelLoaderInvocation(BaseInvocation):
     """Loads a flux base model, outputting its submodels."""
@@ -87,7 +85,7 @@ class FluxModelLoaderInvocation(BaseInvocation):
         return FluxModelLoaderOutput(
             transformer=TransformerField(transformer=transformer, loras=[]),
             clip=CLIPField(tokenizer=tokenizer, text_encoder=clip_encoder, loras=[], skipped_layers=0),
-            t5_encoder=T5EncoderField(tokenizer=tokenizer2, text_encoder=t5_encoder),
+            t5_encoder=T5EncoderField(tokenizer=tokenizer2, text_encoder=t5_encoder, loras=[]),
             vae=VAEField(vae=vae),
             max_seq_len=max_seq_lengths[transformer_config.config_path],
         )

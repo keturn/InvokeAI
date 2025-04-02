@@ -31,10 +31,10 @@ from invokeai.backend.util.devices import TorchDevice
 
 @invocation(
     "l2i",
-    title="Latents to Image",
+    title="Latents to Image - SD1.5, SDXL",
     tags=["latents", "image", "vae", "l2i"],
     category="latents",
-    version="1.3.1",
+    version="1.3.2",
 )
 class LatentsToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Generates an image from latents."""
@@ -60,7 +60,7 @@ class LatentsToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
         # It was found experimentally that the peak working memory scales linearly with the number of pixels and the
         # element size (precision). This estimate is accurate for both SD1 and SDXL.
         element_size = 4 if self.fp32 else 2
-        scaling_constant = 960  # Determined experimentally.
+        scaling_constant = 2200  # Determined experimentally.
 
         if use_tiling:
             tile_size = self.tile_size
@@ -84,9 +84,7 @@ class LatentsToImageInvocation(BaseInvocation, WithMetadata, WithBoard):
             # If we are running in FP32, then we should account for the likely increase in model size (~250MB).
             working_memory += 250 * 2**20
 
-        # We add 20% to the working memory estimate to be safe.
-        working_memory = int(working_memory * 1.2)
-        return working_memory
+        return int(working_memory)
 
     @torch.no_grad()
     def invoke(self, context: InvocationContext) -> ImageOutput:

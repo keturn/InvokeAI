@@ -28,6 +28,7 @@ from invokeai.app.services.events.events_common import (
     ModelLoadCompleteEvent,
     ModelLoadStartedEvent,
     QueueClearedEvent,
+    QueueItemsRetriedEvent,
     QueueItemStatusChangedEvent,
 )
 
@@ -39,10 +40,12 @@ if TYPE_CHECKING:
     from invokeai.app.services.session_queue.session_queue_common import (
         BatchStatus,
         EnqueueBatchResult,
+        RetryItemsResult,
         SessionQueueItem,
         SessionQueueStatus,
     )
-    from invokeai.backend.model_manager.config import AnyModelConfig, SubModelType
+    from invokeai.backend.model_manager import SubModelType
+    from invokeai.backend.model_manager.config import AnyModelConfig
 
 
 class EventServiceBase:
@@ -98,6 +101,10 @@ class EventServiceBase:
     def emit_batch_enqueued(self, enqueue_result: "EnqueueBatchResult") -> None:
         """Emitted when a batch is enqueued"""
         self.dispatch(BatchEnqueuedEvent.build(enqueue_result))
+
+    def emit_queue_items_retried(self, retry_result: "RetryItemsResult") -> None:
+        """Emitted when a list of queue items are retried"""
+        self.dispatch(QueueItemsRetriedEvent.build(retry_result))
 
     def emit_queue_cleared(self, queue_id: str) -> None:
         """Emitted when a queue is cleared"""

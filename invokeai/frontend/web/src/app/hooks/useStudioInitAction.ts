@@ -11,12 +11,19 @@ import { $imageViewer } from 'features/gallery/components/ImageViewer/useImageVi
 import { sentImageToCanvas } from 'features/gallery/store/actions';
 import { parseAndRecallAllMetadata } from 'features/metadata/util/handlers';
 import { $hasTemplates } from 'features/nodes/store/nodesSlice';
-import { $isWorkflowListMenuIsOpen } from 'features/nodes/store/workflowListMenu';
+import { $isWorkflowLibraryModalOpen } from 'features/nodes/store/workflowLibraryModal';
+import {
+  $workflowLibraryTagOptions,
+  workflowLibraryTagsReset,
+  workflowLibraryTagToggled,
+  workflowLibraryViewChanged,
+} from 'features/nodes/store/workflowLibrarySlice';
 import { $isStylePresetsMenuOpen, activeStylePresetIdChanged } from 'features/stylePresets/store/stylePresetSlice';
 import { toast } from 'features/toast/toast';
 import { activeTabCanvasRightPanelChanged, setActiveTab } from 'features/ui/store/uiSlice';
-import { useGetAndLoadLibraryWorkflow } from 'features/workflowLibrary/hooks/useGetAndLoadLibraryWorkflow';
-import { useCallback, useEffect, useRef } from 'react';
+import { useLoadWorkflowWithDialog } from 'features/workflowLibrary/components/LoadWorkflowConfirmationAlertDialog';
+import { atom } from 'nanostores';
+import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getImageDTO, getImageMetadata } from 'services/api/endpoints/images';
 import { getStylePreset } from 'services/api/endpoints/stylePresets';
@@ -29,8 +36,19 @@ type SendToCanvasAction = _StudioInitAction<'sendToCanvas', { imageName: string 
 type UseAllParametersAction = _StudioInitAction<'useAllParameters', { imageName: string }>;
 type StudioDestinationAction = _StudioInitAction<
   'goToDestination',
-  { destination: 'generation' | 'canvas' | 'workflows' | 'upscaling' | 'viewAllWorkflows' | 'viewAllStylePresets' }
+  {
+    destination:
+      | 'generation'
+      | 'canvas'
+      | 'workflows'
+      | 'upscaling'
+      | 'viewAllWorkflows'
+      | 'viewAllWorkflowsRecommended'
+      | 'viewAllStylePresets';
+  }
 >;
+// Use global state to show loader until we are ready to render the studio.
+export const $didStudioInit = atom(false);
 
 export type StudioInitAction =
   | LoadWorkflowAction
@@ -51,11 +69,10 @@ export type StudioInitAction =
 export const useStudioInitAction = (action?: StudioInitAction) => {
   useAssertSingleton('useStudioInitAction');
   const { t } = useTranslation();
-  // Use a ref to ensure that we only perform the action once
-  const didInit = useRef(false);
   const didParseOpenAPISchema = useStore($hasTemplates);
   const store = useAppStore();
-  const { getAndLoadWorkflow } = useGetAndLoadLibraryWorkflow();
+  const loadWorkflowWithDialog = useLoadWorkflowWithDialog();
+  const workflowLibraryTagOptions = useStore($workflowLibraryTagOptions);
 
   const handleSendToCanvas = useCallback(
     async (imageName: string) => {
@@ -102,19 +119,24 @@ export const useStudioInitAction = (action?: StudioInitAction) => {
       }
       const metadata = getImageMetadataResult.value;
       // This shows a toast
-      parseAndRecallAllMetadata(metadata, true);
+      await parseAndRecallAllMetadata(metadata, true);
       store.dispatch(setActiveTab('canvas'));
     },
     [store, t]
   );
 
   const handleLoadWorkflow = useCallback(
-    (workflowId: string) => {
+    async (workflowId: string) => {
       // This shows a toast
-      getAndLoadWorkflow(workflowId);
-      store.dispatch(setActiveTab('workflows'));
+      await loadWorkflowWithDialog({
+        type: 'library',
+        data: workflowId,
+        onSuccess: () => {
+          store.dispatch(setActiveTab('workflows'));
+        },
+      });
     },
-    [getAndLoadWorkflow, store]
+    [loadWorkflowWithDialog, store]
   );
 
   const handleSelectStylePreset = useCallback(
@@ -164,7 +186,19 @@ export const useStudioInitAction = (action?: StudioInitAction) => {
         case 'viewAllWorkflows':
           // Go to the workflows tab and open the workflow library modal
           store.dispatch(setActiveTab('workflows'));
-          $isWorkflowListMenuIsOpen.set(true);
+          $isWorkflowLibraryModalOpen.set(true);
+          break;
+        case 'viewAllWorkflowsRecommended':
+          // Go to the workflows tab and open the workflow library modal with the recommended workflows view
+          store.dispatch(setActiveTab('workflows'));
+          $isWorkflowLibraryModalOpen.set(true);
+          store.dispatch(workflowLibraryViewChanged('defaults'));
+          store.dispatch(workflowLibraryTagsReset());
+          for (const tag of workflowLibraryTagOptions) {
+            if (tag.recommended) {
+              store.dispatch(workflowLibraryTagToggled(tag.label));
+            }
+          }
           break;
         case 'viewAllStylePresets':
           // Go to the canvas tab and open the style presets menu
@@ -173,39 +207,51 @@ export const useStudioInitAction = (action?: StudioInitAction) => {
           break;
       }
     },
-    [store]
+    [store, workflowLibraryTagOptions]
+  );
+
+  const handleStudioInitAction = useCallback(
+    async (action: StudioInitAction) => {
+      // This cannot be in the useEffect below because we need to await some of the actions before setting didStudioInit.
+      switch (action.type) {
+        case 'loadWorkflow':
+          await handleLoadWorkflow(action.data.workflowId);
+          break;
+        case 'selectStylePreset':
+          await handleSelectStylePreset(action.data.stylePresetId);
+          break;
+
+        case 'sendToCanvas':
+          await handleSendToCanvas(action.data.imageName);
+          break;
+
+        case 'useAllParameters':
+          await handleUseAllMetadata(action.data.imageName);
+          break;
+
+        case 'goToDestination':
+          handleGoToDestination(action.data.destination);
+          break;
+
+        default:
+          break;
+      }
+      $didStudioInit.set(true);
+    },
+    [handleGoToDestination, handleLoadWorkflow, handleSelectStylePreset, handleSendToCanvas, handleUseAllMetadata]
   );
 
   useEffect(() => {
-    if (didInit.current || !action || !didParseOpenAPISchema) {
+    if ($didStudioInit.get() || !didParseOpenAPISchema) {
       return;
     }
 
-    didInit.current = true;
-
-    switch (action.type) {
-      case 'loadWorkflow':
-        handleLoadWorkflow(action.data.workflowId);
-        break;
-      case 'selectStylePreset':
-        handleSelectStylePreset(action.data.stylePresetId);
-        break;
-
-      case 'sendToCanvas':
-        handleSendToCanvas(action.data.imageName);
-        break;
-
-      case 'useAllParameters':
-        handleUseAllMetadata(action.data.imageName);
-        break;
-
-      case 'goToDestination':
-        handleGoToDestination(action.data.destination);
-        break;
-
-      default:
-        break;
+    if (!action) {
+      $didStudioInit.set(true);
+      return;
     }
+
+    handleStudioInitAction(action);
   }, [
     handleSendToCanvas,
     handleUseAllMetadata,
@@ -214,5 +260,6 @@ export const useStudioInitAction = (action?: StudioInitAction) => {
     handleGoToDestination,
     handleLoadWorkflow,
     didParseOpenAPISchema,
+    handleStudioInitAction,
   ]);
 };

@@ -25,20 +25,15 @@ from invokeai.backend.flux.ip_adapter.xlabs_ip_adapter_flux import (
 )
 from invokeai.backend.flux.model import Flux
 from invokeai.backend.flux.modules.autoencoder import AutoEncoder
+from invokeai.backend.flux.redux.flux_redux_model import FluxReduxModel
 from invokeai.backend.flux.util import ae_params, params
-from invokeai.backend.model_manager import (
-    AnyModel,
-    AnyModelConfig,
-    BaseModelType,
-    ModelFormat,
-    ModelType,
-    SubModelType,
-)
 from invokeai.backend.model_manager.config import (
+    AnyModelConfig,
     CheckpointConfigBase,
     CLIPEmbedDiffusersConfig,
     ControlNetCheckpointConfig,
     ControlNetDiffusersConfig,
+    FluxReduxConfig,
     IPAdapterCheckpointConfig,
     MainBnbQuantized4bCheckpointConfig,
     MainCheckpointConfig,
@@ -49,6 +44,13 @@ from invokeai.backend.model_manager.config import (
 )
 from invokeai.backend.model_manager.load.load_default import ModelLoader
 from invokeai.backend.model_manager.load.model_loader_registry import ModelLoaderRegistry
+from invokeai.backend.model_manager.taxonomy import (
+    AnyModel,
+    BaseModelType,
+    ModelFormat,
+    ModelType,
+    SubModelType,
+)
 from invokeai.backend.model_manager.util.model_util import (
     convert_bundle_to_flux_transformer_checkpoint,
 )
@@ -392,4 +394,26 @@ class FluxIpAdapterModel(ModelLoader):
             model = XlabsIpAdapterFlux(params=params)
 
         model.load_xlabs_state_dict(sd, assign=True)
+        return model
+
+
+@ModelLoaderRegistry.register(base=BaseModelType.Flux, type=ModelType.FluxRedux, format=ModelFormat.Checkpoint)
+class FluxReduxModelLoader(ModelLoader):
+    """Class to load FLUX Redux models."""
+
+    def _load_model(
+        self,
+        config: AnyModelConfig,
+        submodel_type: Optional[SubModelType] = None,
+    ) -> AnyModel:
+        if not isinstance(config, FluxReduxConfig):
+            raise ValueError(f"Unexpected model config type: {type(config)}.")
+
+        sd = load_file(Path(config.path))
+
+        with accelerate.init_empty_weights():
+            model = FluxReduxModel()
+
+        model.load_state_dict(sd, assign=True)
+        model.to(dtype=torch.bfloat16)
         return model

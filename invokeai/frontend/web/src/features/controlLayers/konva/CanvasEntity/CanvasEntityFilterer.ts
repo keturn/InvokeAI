@@ -68,7 +68,7 @@ export class CanvasEntityFilterer extends CanvasModuleBase {
   /**
    * The config for the filter.
    */
-  $filterConfig = atom<FilterConfig>(IMAGE_FILTERS.canny_edge_detection.buildDefaults());
+  $filterConfig = atom<FilterConfig>(IMAGE_FILTERS.adjust_image.buildDefaults());
 
   /**
    * The initial filter config, used to reset the filter config.
@@ -212,7 +212,7 @@ export class CanvasEntityFilterer extends CanvasModuleBase {
       return filter.buildDefaults();
     } else {
       // Otherwise, used the default filter
-      return IMAGE_FILTERS.canny_edge_detection.buildDefaults();
+      return IMAGE_FILTERS.adjust_image.buildDefaults();
     }
   };
 
@@ -284,8 +284,8 @@ export class CanvasEntityFilterer extends CanvasModuleBase {
       this.log.error({ error: serializeError(filterResult.error) }, 'Error filtering');
       this.$isProcessing.set(false);
       // Clean up the abort controller as needed
-      if (!this.abortController.signal.aborted) {
-        this.abortController.abort();
+      if (!controller.signal.aborted) {
+        controller.abort();
       }
       this.abortController = null;
       return;
@@ -324,8 +324,8 @@ export class CanvasEntityFilterer extends CanvasModuleBase {
     this.$isProcessing.set(false);
 
     // Clean up the abort controller as needed
-    if (!this.abortController.signal.aborted) {
-      this.abortController.abort();
+    if (!controller.signal.aborted) {
+      controller.abort();
     }
 
     this.abortController = null;

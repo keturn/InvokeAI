@@ -41,10 +41,36 @@ class WorkflowRecordsStorageBase(ABC):
         self,
         order_by: WorkflowRecordOrderBy,
         direction: SQLiteDirection,
-        category: WorkflowCategory,
+        categories: Optional[list[WorkflowCategory]],
         page: int,
         per_page: Optional[int],
         query: Optional[str],
+        tags: Optional[list[str]],
+        has_been_opened: Optional[bool],
     ) -> PaginatedResults[WorkflowRecordListItemDTO]:
         """Gets many workflows."""
+        pass
+
+    @abstractmethod
+    def counts_by_category(
+        self,
+        categories: list[WorkflowCategory],
+        has_been_opened: Optional[bool] = None,
+    ) -> dict[str, int]:
+        """Gets a dictionary of counts for each of the provided categories."""
+        pass
+
+    @abstractmethod
+    def counts_by_tag(
+        self,
+        tags: list[str],
+        categories: Optional[list[WorkflowCategory]] = None,
+        has_been_opened: Optional[bool] = None,
+    ) -> dict[str, int]:
+        """Gets a dictionary of counts for each of the provided tags."""
+        pass
+
+    @abstractmethod
+    def update_opened_at(self, workflow_id: str) -> None:
+        """Open a workflow."""
         pass

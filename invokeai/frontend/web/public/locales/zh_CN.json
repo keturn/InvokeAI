@@ -107,7 +107,6 @@
         "noImagesInGallery": "无图像可用于显示",
         "deleteImage_other": "删除{{count}}张图片",
         "deleteImagePermanent": "删除的图片无法被恢复。",
-        "assets": "素材",
         "autoAssignBoardOnClick": "点击后自动分配面板",
         "featuresWillReset": "如果您删除该图像，这些功能会立即被重置。",
         "loading": "加载中",
@@ -909,7 +908,6 @@
         "unableToGetWorkflowVersion": "无法获取工作流架构版本",
         "nodePack": "节点包",
         "unableToExtractSchemaNameFromRef": "无法从参考中提取架构名",
-        "unknownOutput": "未知输出：{{name}}",
         "unknownErrorValidatingWorkflow": "验证工作流时出现未知错误",
         "collectionFieldType": "{{name}}(合集)",
         "unknownNodeType": "未知节点类型",
@@ -1630,7 +1628,6 @@
         "projectWorkflows": "项目工作流程",
         "copyShareLink": "复制分享链接",
         "chooseWorkflowFromLibrary": "从库中选择工作流程",
-        "uploadAndSaveWorkflow": "上传到库",
         "deleteWorkflow2": "您确定要删除此工作流程吗？此操作无法撤销。"
     },
     "accordions": {
