@@ -265,11 +265,15 @@ class FluxGGUFCheckpointModel(ModelLoader):
         assert isinstance(config, MainGGUFCheckpointConfig)
         model_path = Path(config.path)
 
-        with accelerate.init_empty_weights():
-            model = Flux(params[config.config_path])
+        # with accelerate.init_empty_weights():
+        #     model = Flux(params[config.config_path])
 
         # HACK(ryand): We shouldn't be hard-coding the compute_dtype here.
         sd = gguf_sd_loader(model_path, compute_dtype=torch.bfloat16)
+
+        flux_params = infer_flux_params_from_state_dict(sd)
+        with accelerate.init_empty_weights():
+            model = Flux(flux_params)
 
         # HACK(ryand): There are some broken GGUF models in circulation that have the wrong shape for img_in.weight.
         # We override the shape here to fix the issue.
