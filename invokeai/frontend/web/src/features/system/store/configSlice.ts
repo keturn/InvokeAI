@@ -21,6 +21,7 @@ const initialConfigState: AppConfig = {
   allowPrivateBoards: false,
   allowPrivateStylePresets: false,
   allowClientSideUpload: false,
+  allowPublishWorkflows: false,
   disabledTabs: [],
   disabledFeatures: ['lightbox', 'faceRestore', 'batches'],
   disabledSDFeatures: ['variation', 'symmetry', 'hires', 'perlinNoise', 'noiseThreshold'],
@@ -220,4 +221,5 @@ export const selectMetadataFetchDebounce = createConfigSelector((config) => conf
 
 export const selectIsModelsTabDisabled = createConfigSelector((config) => config.disabledTabs.includes('models'));
 export const selectIsClientSideUploadEnabled = createConfigSelector((config) => config.allowClientSideUpload);
+export const selectAllowPublishWorkflows = createConfigSelector((config) => config.allowPublishWorkflows);
 export const selectIsLocal = createSelector(selectConfigSlice, (config) => config.isLocal);

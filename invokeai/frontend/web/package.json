@@ -150,7 +150,7 @@
     "prettier": "^3.3.3",
     "rollup-plugin-visualizer": "^5.12.0",
     "storybook": "^8.3.4",
-    "tsafe": "^1.7.5",
+    "tsafe": "^1.8.5",
     "type-fest": "^4.26.1",
     "typescript": "^5.6.2",
     "vite": "^6.1.0",
@@ -162,5 +162,6 @@
   },
   "engines": {
     "pnpm": "8"
-  }
+  },
+  "packageManager": "pnpm@8.15.9+sha512.499434c9d8fdd1a2794ebf4552b3b25c0a633abcee5bb15e7b5de90f32f47b513aca98cd5cfd001c31f0db454bc3804edccd578501e4ca293a6816166bbd9f81"
 }
