@@ -154,6 +154,7 @@ class GGMLTensor(torch.Tensor):
             return torch.from_numpy(new).to(self.quantized_data.device, dtype=self.compute_dtype)
 
     @classmethod
+    @torch._dynamo.decorators.skip
     def __torch_dispatch__(cls, func, types, args, kwargs):
         # We will likely hit cases here in the future where a new op is encountered that is not yet supported.
         # The new op simply needs to be added to the GGML_TENSOR_OP_TABLE.

@@ -57,6 +57,7 @@ from invokeai.backend.model_manager.util.model_util import (
 from invokeai.backend.quantization.gguf.loaders import gguf_sd_loader
 from invokeai.backend.quantization.gguf.utils import TORCH_COMPATIBLE_QTYPES
 from invokeai.backend.util.silence_warnings import SilenceWarnings
+from invokeai.backend.util.torch_compile import default_dtype
 
 try:
     from invokeai.backend.quantization.bnb_llm_int8 import quantize_model_llm_int8
@@ -263,7 +264,7 @@ class FluxGGUFCheckpointModel(ModelLoader):
         assert isinstance(config, MainGGUFCheckpointConfig)
         model_path = Path(config.path)
 
-        with accelerate.init_empty_weights():
+        with accelerate.init_empty_weights(), default_dtype(torch.bfloat16):
             model = Flux(params[config.config_path])
 
         # HACK(ryand): We shouldn't be hard-coding the compute_dtype here.
