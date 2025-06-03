@@ -44,10 +44,15 @@ def apply_to_quantized_tensor(func, args, kwargs):
     )
 
 
+def ggml_no_shallow_copy(func, args, kwargs):
+    return False
+
+
 GGML_TENSOR_OP_TABLE = {
     # Ops to run on the quantized tensor.
     torch.ops.aten.detach.default: apply_to_quantized_tensor,  # pyright: ignore
     torch.ops.aten._to_copy.default: apply_to_quantized_tensor,  # pyright: ignore
+    torch.ops.aten.to.dtype_layout: apply_to_quantized_tensor,  # pyright: ignore
     torch.ops.aten.clone.default: apply_to_quantized_tensor,  # pyright: ignore
     # Ops to run on dequantized tensors.
     torch.ops.aten.t.default: dequantize_and_run,  # pyright: ignore
@@ -57,6 +62,10 @@ GGML_TENSOR_OP_TABLE = {
     torch.ops.aten.sub.Tensor: dequantize_and_run,  # pyright: ignore
     torch.ops.aten.allclose.default: dequantize_and_run,  # pyright: ignore
     torch.ops.aten.slice.Tensor: dequantize_and_run,  # pyright: ignore
+    torch.ops.aten.linear.default: dequantize_and_run,  # pyright: ignore
+    torch.ops.aten.rms_norm.default: dequantize_and_run,  # pyright: ignore
+    # only encountered this when partial loading is *off*
+    torch.ops.aten._has_compatible_shallow_copy_type.default: ggml_no_shallow_copy,  # pyright: ignore
 }
 
 if torch.backends.mps.is_available():
@@ -154,6 +163,7 @@ class GGMLTensor(torch.Tensor):
             return torch.from_numpy(new).to(self.quantized_data.device, dtype=self.compute_dtype)
 
     @classmethod
+    @torch._dynamo.decorators.skip
     def __torch_dispatch__(cls, func, types, args, kwargs):
         # We will likely hit cases here in the future where a new op is encountered that is not yet supported.
         # The new op simply needs to be added to the GGML_TENSOR_OP_TABLE.

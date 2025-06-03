@@ -56,6 +56,11 @@ from invokeai.backend.rectified_flow.rectified_flow_inpaint_extension import Rec
 from invokeai.backend.stable_diffusion.diffusers_pipeline import PipelineIntermediateState
 from invokeai.backend.stable_diffusion.diffusion.conditioning_data import FLUXConditioningInfo
 from invokeai.backend.util.devices import TorchDevice
+from invokeai.backend.util.torch_compile import (
+    compile_with_progress,
+    default_dtype,
+    log_compilation_time,
+)
 
 
 @invocation(
@@ -376,6 +381,9 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
                 dtype=inference_dtype,
             )
 
+            exit_stack.enter_context(default_dtype(torch.bfloat16))
+            exit_stack.enter_context(log_compilation_time(context.logger.info))
+            transformer = compile_with_progress(transformer)
             x = denoise(
                 model=transformer,
                 img=x,
