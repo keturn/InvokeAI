@@ -57,7 +57,7 @@ from invokeai.backend.stable_diffusion.diffusers_pipeline import PipelineInterme
 from invokeai.backend.stable_diffusion.diffusion.conditioning_data import FLUXConditioningInfo
 from invokeai.backend.util.devices import TorchDevice
 from invokeai.backend.util.torch_compile import (
-    compile_with_progress,
+    compile_regions,
     default_dtype,
     log_compilation_time,
 )
@@ -383,7 +383,7 @@ class FluxDenoiseInvocation(BaseInvocation, WithMetadata, WithBoard):
 
             exit_stack.enter_context(default_dtype(torch.bfloat16))
             exit_stack.enter_context(log_compilation_time(context.logger.info))
-            transformer = compile_with_progress(transformer)
+            transformer = compile_regions(transformer)
             x = denoise(
                 model=transformer,
                 img=x,

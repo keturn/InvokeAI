@@ -27,7 +27,7 @@ def _gather_modules(module: torch.nn.Module, prefix=''):
 
 M = TypeVar('M', bound=torch.nn.Module)
 
-def compile_with_progress(module: M, *, callback=None, **compile_kwargs) -> M:
+def compile_regions(module: M, **compile_kwargs) -> M:
     """
     Performs regional compilation where we target repeated blocks of the same class and compile them sequentially to
     hit the compiler's cache. For example, in `GPT2LMHeadModel`, the repeated block/class is `GPT2Block`, and can be
@@ -36,8 +36,9 @@ def compile_with_progress(module: M, *, callback=None, **compile_kwargs) -> M:
     This allows us to speed up the compilation overhead / cold start of models like LLMs and Transformers in general.
     See https://pytorch.org/tutorials/recipes/regional_compilation.html for more details.
 
-    This implementation provides a tqdm progress bar, which kinda works, but beware that much of the work of the compiler
-    may happen on-demand when the module is evaluated--for which no progress indicator is provided.
+    This implementation differs from accelerate.utils.compile_regions in two ways:
+    1. It gathers the complete list of regions before marking any of them for compilation.
+    2. It uses `Module.compile` instead of swapping out each Module instance.
 
     Args:
         module (`torch.nn.Module`):
@@ -49,12 +50,8 @@ def compile_with_progress(module: M, *, callback=None, **compile_kwargs) -> M:
         `torch.nn.Module`: The model compiled.
     """
     modules = _gather_modules(module, prefix=module.__class__.__name__)
-    progress = tqdm(modules, desc="Marking for compilation", unit="module")
-    for (name, submodule) in progress:
-        progress.set_postfix_str(name)
+    for name, submodule in modules:
         submodule.compile(**compile_kwargs)
-        if callback is not None:
-            callback(submodule.name)
     return module
 
 
