@@ -46,6 +46,20 @@ def denoise(
     )
     # guidance_vec is ignored for schnell.
     guidance_vec = torch.full((img.shape[0],), guidance, device=img.device, dtype=img.dtype)
+    txt = pos_regional_prompting_extension.regional_text_conditioning.t5_embeddings
+    txt_ids = pos_regional_prompting_extension.regional_text_conditioning.t5_txt_ids
+    clip_embeddings = pos_regional_prompting_extension.regional_text_conditioning.clip_embeddings
+    # Dynamo annotations of dubious utility.
+    torch._dynamo.mark_dynamic(img, (1,))
+    torch._dynamo.mark_dynamic(img_ids, (1,))
+    torch._dynamo.mark_dynamic(txt, (1,))  # txt length is dynamic as it's different for dev and Schnell
+    torch._dynamo.mark_dynamic(txt_ids, (1,))
+    torch._dynamo.mark_static(img, (2,))
+    torch._dynamo.mark_static(img_ids, (2,))
+    torch._dynamo.mark_static(txt, (2,))
+    torch._dynamo.mark_static(txt_ids, (2,))
+    torch._dynamo.mark_static(clip_embeddings, (2,))
+
     for step_index, (t_curr, t_prev) in tqdm(list(enumerate(zip(timesteps[:-1], timesteps[1:], strict=True)))):
         t_vec = torch.full((img.shape[0],), t_curr, dtype=img.dtype, device=img.device)
 
@@ -58,9 +72,9 @@ def denoise(
                     total_num_timesteps=total_steps,
                     img=img,
                     img_ids=img_ids,
-                    txt=pos_regional_prompting_extension.regional_text_conditioning.t5_embeddings,
-                    txt_ids=pos_regional_prompting_extension.regional_text_conditioning.t5_txt_ids,
-                    y=pos_regional_prompting_extension.regional_text_conditioning.clip_embeddings,
+                    txt=txt,
+                    txt_ids=txt_ids,
+                    y=clip_embeddings,
                     timesteps=t_vec,
                     guidance=guidance_vec,
                 )
@@ -75,9 +89,9 @@ def denoise(
         pred = model(
             img=pred_img,
             img_ids=img_ids,
-            txt=pos_regional_prompting_extension.regional_text_conditioning.t5_embeddings,
-            txt_ids=pos_regional_prompting_extension.regional_text_conditioning.t5_txt_ids,
-            y=pos_regional_prompting_extension.regional_text_conditioning.clip_embeddings,
+            txt=txt,
+            txt_ids=txt_ids,
+            y=clip_embeddings,
             timesteps=t_vec,
             guidance=guidance_vec,
             timestep_index=step_index,
