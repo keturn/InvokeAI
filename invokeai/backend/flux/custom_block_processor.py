@@ -59,6 +59,7 @@ class CustomDoubleStreamBlockProcessor:
         return img, txt, img_q
 
     @staticmethod
+    @torch.compile
     def custom_double_block_forward(
         timestep_index: int,
         total_num_timesteps: int,
@@ -121,6 +122,7 @@ class CustomSingleStreamBlockProcessor:
         return x + mod.gate * output
 
     @staticmethod
+    @torch.compile
     def custom_single_block_forward(
         timestep_index: int,
         total_num_timesteps: int,
