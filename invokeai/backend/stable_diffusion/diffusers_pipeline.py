@@ -561,7 +561,11 @@ class StableDiffusionGeneratorPipeline(StableDiffusionPipeline):
         if isinstance(guidance_scale, list):
             guidance_scale = guidance_scale[step_index]
 
-        noise_pred = self.invokeai_diffuser._combine(uc_noise_pred, c_noise_pred, guidance_scale)
+        # convert epsilon-prediction to x₀ (denoised) for guidance (v-prediction may need something different?)
+        uc_x0 = latents + uc_noise_pred
+        c_x0 = latents + c_noise_pred
+        x0_pred = self.invokeai_diffuser._combine(uc_x0, c_x0, guidance_scale)
+        noise_pred = x0_pred - latents
         guidance_rescale_multiplier = conditioning_data.guidance_rescale_multiplier
         if guidance_rescale_multiplier > 0:
             noise_pred = self._rescale_cfg(
