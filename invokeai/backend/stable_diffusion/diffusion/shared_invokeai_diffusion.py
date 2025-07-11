@@ -500,4 +500,8 @@ class InvokeAIDiffuserComponent:
     def _combine_fdg(self, unconditioned_next_x, conditioned_next_x, guidance_scale, fdg_high_ratio=3.0):
         from ..extensions import fdg
 
-        return fdg.laplacian_guidance(conditioned_next_x, unconditioned_next_x, (guidance_scale * fdg_high_ratio, guidance_scale * fdg_high_ratio / 2, guidance_scale))
+        return fdg.laplacian_guidance(
+            conditioned_next_x,
+            unconditioned_next_x,
+            (guidance_scale * fdg_high_ratio, guidance_scale * fdg_high_ratio / 2, guidance_scale),
+        )
