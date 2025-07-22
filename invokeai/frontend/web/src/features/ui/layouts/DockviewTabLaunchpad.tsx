@@ -16,8 +16,6 @@ import {
   PiTextAaBold,
 } from 'react-icons/pi';
 
-import { useHackOutDvTabDraggable } from './use-hack-out-dv-tab-draggable';
-
 const TAB_ICONS: Record<TabName, IconType> = {
   generate: PiTextAaBold,
   canvas: PiBoundingBoxBold,
@@ -27,7 +25,7 @@ const TAB_ICONS: Record<TabName, IconType> = {
   queue: PiQueueBold,
 };
 
-export const TabWithLaunchpadIcon = memo((props: IDockviewPanelHeaderProps) => {
+export const DockviewTabLaunchpad = memo((props: IDockviewPanelHeaderProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const activeTab = useAppSelector(selectActiveTab);
 
@@ -43,8 +41,6 @@ export const TabWithLaunchpadIcon = memo((props: IDockviewPanelHeaderProps) => {
     setFocusedRegion(props.params.focusRegion);
   }, [props.params.focusRegion]);
 
-  useHackOutDvTabDraggable(ref);
-
   return (
     <Flex ref={ref} alignItems="center" h="full" px={4} gap={3} onPointerDown={onPointerDown}>
       <Icon as={TAB_ICONS[activeTab]} color="invokeYellow.300" boxSize={5} />
@@ -52,4 +48,4 @@ export const TabWithLaunchpadIcon = memo((props: IDockviewPanelHeaderProps) => {
     </Flex>
   );
 });
-TabWithLaunchpadIcon.displayName = 'TabWithLaunchpadIcon';
+DockviewTabLaunchpad.displayName = 'DockviewTabLaunchpad';
