@@ -7921,10 +7921,11 @@ export type components = {
              */
             ip_adapter?: components["schemas"]["IPAdapterField"] | components["schemas"]["IPAdapterField"][] | null;
             /**
+             * Kontext Conditioning
              * @description FLUX Kontext conditioning (reference image).
              * @default null
              */
-            kontext_conditioning?: components["schemas"]["FluxKontextConditioningField"] | null;
+            kontext_conditioning?: components["schemas"]["FluxKontextConditioningField"] | components["schemas"]["FluxKontextConditioningField"][] | null;
             /**
              * type
              * @default flux_denoise
@@ -8088,10 +8089,11 @@ export type components = {
              */
             ip_adapter?: components["schemas"]["IPAdapterField"] | components["schemas"]["IPAdapterField"][] | null;
             /**
+             * Kontext Conditioning
              * @description FLUX Kontext conditioning (reference image).
              * @default null
              */
-            kontext_conditioning?: components["schemas"]["FluxKontextConditioningField"] | null;
+            kontext_conditioning?: components["schemas"]["FluxKontextConditioningField"] | components["schemas"]["FluxKontextConditioningField"][] | null;
             /**
              * type
              * @default flux_denoise_meta
@@ -24743,7 +24745,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JsonValue"] | null;
+                    "application/json": string | null;
                 };
             };
             /** @description Validation Error */
@@ -24769,7 +24771,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["JsonValue"];
+                "application/json": string;
             };
         };
         responses: {
@@ -24779,7 +24781,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": string;
                 };
             };
             /** @description Validation Error */
